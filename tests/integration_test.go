@@ -35,19 +35,19 @@ func TestPeerDiscovery(t *testing.T) {
 	config1 := discovery.DiscoveryConfig{
 		NodeID:       "node-1",
 		Address:      "0.0.0.0",
-		Port:         9001,
+		Port:         9201,
 		Interval:     100 * time.Millisecond,
 		PeerTimeout:  1 * time.Second,
-		KnownPorts:   []uint16{9001, 9002},
+		KnownPorts:   []uint16{9201, 9202},
 	}
 
 	config2 := discovery.DiscoveryConfig{
 		NodeID:       "node-2",
 		Address:      "0.0.0.0",
-		Port:         9002,
+		Port:         9202,
 		Interval:     100 * time.Millisecond,
 		PeerTimeout:  1 * time.Second,
-		KnownPorts:   []uint16{9001, 9002},
+		KnownPorts:   []uint16{9201, 9202},
 	}
 
 	disc1 := discovery.New(config1, logger)
@@ -56,10 +56,14 @@ func TestPeerDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	disc1.Start(ctx)
-	disc2.Start(ctx)
+	if err := disc1.Start(ctx); err != nil {
+		t.Fatalf("Failed to start disc1: %v", err)
+	}
+	if err := disc2.Start(ctx); err != nil {
+		t.Fatalf("Failed to start disc2: %v", err)
+	}
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	if disc1.PeerCount() == 0 {
 		t.Error("Node 1 should have discovered peers")

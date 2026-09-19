@@ -13,6 +13,7 @@ type Discovery struct {
 	nodeID       node.NodeID
 	address      string
 	port         uint16
+	knownPorts   []uint16
 	peers        *PeerList
 	sender       *HeartbeatSender
 	listener     *HeartbeatListener
@@ -36,6 +37,7 @@ func New(config DiscoveryConfig, logger *slog.Logger) *Discovery {
 		nodeID:      config.NodeID,
 		address:     config.Address,
 		port:        config.Port,
+		knownPorts:  config.KnownPorts,
 		peers:       NewPeerList(),
 		logger:      logger,
 		interval:    config.Interval,
@@ -51,7 +53,7 @@ func (d *Discovery) Start(ctx context.Context) error {
 	)
 
 	d.sender = NewHeartbeatSender(d.nodeID, d.address, d.port, d.interval)
-	if err := d.sender.Start([]uint16{9001, 9002, 9003, 9004, 9005}); err != nil {
+	if err := d.sender.Start(d.knownPorts); err != nil {
 		return err
 	}
 
