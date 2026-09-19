@@ -1,0 +1,179 @@
+syntax = "proto3";
+
+package relaymesh;
+
+option go_package = "github.com/relaymesh/relaymesh/api/proto";
+
+message PeerAdvertisement {
+    string node_id = 1;
+    string address = 2;
+    uint32 port = 3;
+    repeated string capabilities = 4;
+    int64 timestamp = 5;
+}
+
+message RelayPacket {
+    string source = 1;
+    string destination = 2;
+    uint64 sequence = 3;
+    uint32 ttl = 4;
+    bytes payload = 5;
+    int64 timestamp = 6;
+}
+
+message RoutingUpdate {
+    string source = 1;
+    repeated NodeRouteEntry routes = 2;
+    int64 timestamp = 3;
+}
+
+message NodeRouteEntry {
+    string destination = 1;
+    repeated string path = 2;
+    double cost = 3;
+    int64 expiry = 4;
+}
+
+message PeerList {
+    repeated PeerAdvertisement peers = 1;
+    int64 timestamp = 2;
+}
+
+message Ack {
+    bool success = 1;
+    string message = 2;
+    int64 timestamp = 3;
+}
+
+message RouteRequest {
+    string source = 1;
+    string destination = 2;
+    uint32 max_hops = 3;
+    int64 timestamp = 4;
+}
+
+message RouteResponse {
+    bool found = 1;
+    repeated string path = 2;
+    double cost = 3;
+    int64 timestamp = 4;
+}
+
+message RouteTable {
+    string node_id = 1;
+    repeated RouteTableEntry routes = 2;
+    int64 timestamp = 3;
+}
+
+message RouteTableEntry {
+    string destination = 1;
+    string next_hop = 2;
+    double cost = 3;
+    uint32 hop_count = 4;
+    int64 expiry = 5;
+}
+
+message RouteInvalidation {
+    string source = 1;
+    string destination = 2;
+    string reason = 3;
+    int64 timestamp = 4;
+}
+
+message NetworkMetrics {
+    double latency = 1;
+    double packet_loss = 2;
+    double bandwidth = 3;
+    double jitter = 4;
+    double congestion = 5;
+    uint32 hop_count = 6;
+    double stability = 7;
+    uint64 queue_size = 8;
+    double cpu_usage = 9;
+    double memory_usage = 10;
+}
+
+message PeerMetrics {
+    string peer_id = 1;
+    double latency = 2;
+    double packet_loss = 3;
+    double bandwidth = 4;
+    int64 last_seen = 5;
+}
+
+message TelemetryReport {
+    string node_id = 1;
+    NetworkMetrics metrics = 2;
+    repeated PeerMetrics peer_metrics = 3;
+    int64 timestamp = 4;
+}
+
+message NetworkState {
+    string node_id = 1;
+    repeated float feature_vector = 2;
+    repeated PeerState peers = 3;
+    int64 timestamp = 4;
+}
+
+message PeerState {
+    string peer_id = 1;
+    float latency = 2;
+    float packet_loss = 3;
+    float bandwidth = 4;
+    int64 last_seen = 5;
+}
+
+message RouteRecommendation {
+    string source = 1;
+    string destination = 2;
+    repeated string path = 3;
+    double confidence = 4;
+    double score = 5;
+    int64 timestamp = 6;
+}
+
+message InferenceRequest {
+    NetworkState state = 1;
+    repeated string candidate_destinations = 2;
+}
+
+message InferenceResponse {
+    repeated RouteRecommendation recommendations = 1;
+    int64 inference_time_ms = 2;
+}
+
+message TrainingFeedback {
+    string route_id = 1;
+    double reward = 2;
+    bool success = 3;
+    int64 timestamp = 4;
+}
+
+message ModelInfoRequest {
+    string node_id = 1;
+}
+
+message ModelInfo {
+    string model_name = 1;
+    string model_version = 2;
+    int64 last_trained = 3;
+    double accuracy = 4;
+    bool is_loaded = 5;
+}
+
+service RoutingService {
+    rpc GetRoute(RouteRequest) returns (RouteResponse);
+    rpc GetRouteTable(RouteRequest) returns (RouteTable);
+    rpc UpdateRoute(RouteTableEntry) returns (RouteInvalidation);
+}
+
+service AIService {
+    rpc GetRecommendation(InferenceRequest) returns (InferenceResponse);
+    rpc ReportFeedback(TrainingFeedback) returns (Ack);
+    rpc GetModelInfo(ModelInfoRequest) returns (ModelInfo);
+}
+
+service TelemetryService {
+    rpc ReportTelemetry(TelemetryReport) returns (Ack);
+    rpc GetTelemetry(RouteRequest) returns (TelemetryReport);
+}
