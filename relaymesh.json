@@ -1,0 +1,17 @@
+{
+  "node": {
+    "id": "node-1",
+    "address": "0.0.0.0",
+    "port": 9000,
+    "max_peers": 10,
+    "heartbeat_interval": 5000000000,
+    "peer_timeout": 30000000000
+  },
+  "log": {
+    "level": "info",
+    "format": "text"
+  },
+  "network": {
+    "listen_address": "0.0.0.0:9000"
+  }
+}
