@@ -1,0 +1,23 @@
+[project]
+name = "relaymesh-ai"
+version = "0.1.0"
+description = "RelayMesh AI Control Plane"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+]
+
+[project.scripts]
+relaymesh-ai = "ai.service.server:serve"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+include = ["ai*"]
