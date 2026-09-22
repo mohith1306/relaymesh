@@ -10,12 +10,13 @@ import (
 const Infinity = math.MaxFloat64
 
 type Link struct {
-	From      node.NodeID
-	To        node.NodeID
-	Latency   float64
-	Bandwidth float64
+	From       node.NodeID
+	To         node.NodeID
+	Latency    float64
+	Bandwidth  float64
 	PacketLoss float64
-	Weight    float64
+	Weight     float64
+	IsActive   bool
 }
 
 type Graph struct {

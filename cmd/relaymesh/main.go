@@ -9,9 +9,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/relaymesh/relaymesh/internal/ai"
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
 	"github.com/relaymesh/relaymesh/internal/node"
+	"github.com/relaymesh/relaymesh/internal/routing"
+	"github.com/relaymesh/relaymesh/internal/telemetry"
+	"github.com/relaymesh/relaymesh/web"
 )
 
 func main() {
@@ -21,6 +25,8 @@ func main() {
 	addr := flag.String("address", "", "Listen address (overrides config)")
 	logLevel := flag.String("log-level", "", "Log level (debug, info, warn, error)")
 	generateConfig := flag.Bool("generate-config", false, "Generate default config file")
+	dashboardAddr := flag.String("dashboard", "", "Dashboard address (e.g., :8080)")
+	aiAddr := flag.String("ai", "", "AI service address (e.g., localhost:50051)")
 	flag.Parse()
 
 	if *generateConfig {
@@ -105,12 +111,46 @@ func main() {
 		os.Exit(1)
 	}
 
+	router := routing.New(nodeConfig.ID, logger.With("component", "routing"))
+	collector := telemetry.NewCollector(nodeConfig.ID)
+
+	var aiRouter *ai.AIRouter
+	if *aiAddr != "" {
+		aiClient := ai.NewClient(*aiAddr, logger.With("component", "ai"))
+		if err := aiClient.Connect(ctx); err != nil {
+			logger.Warn("failed to connect to AI service, running without AI", "error", err)
+		} else {
+			aiRouter = ai.NewAIRouter(router, aiClient, logger.With("component", "ai-router"))
+			aiRouter.SetAIAvailable(true)
+			aiRouter.SetCollector(nodeConfig.ID, collector)
+			logger.Info("AI routing enabled", "ai_addr", *aiAddr)
+		}
+	}
+
+	dashboard := web.NewDashboard(logger.With("component", "dashboard"))
+	dashboard.RegisterNode(nodeConfig.ID, nodeConfig.Address, nodeConfig.Port, router, collector)
+
+	if *dashboardAddr != "" {
+		go func() {
+			if err := dashboard.Start(*dashboardAddr); err != nil {
+				logger.Error("dashboard error", "error", err)
+			}
+		}()
+		logger.Info("dashboard started", "addr", *dashboardAddr)
+	}
+
+	_ = aiRouter
+
 	if err := n.Start(ctx); err != nil {
 		logger.Error("failed to start node", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("node running", "node_id", n.ID(), "state", n.State())
+	logger.Info("node running",
+		"node_id", n.ID(),
+		"state", n.State(),
+		"port", nodeConfig.Port,
+	)
 	<-ctx.Done()
 
 	disc.Stop()
