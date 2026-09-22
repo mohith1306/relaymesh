@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: relaymesh-relay
+    runtime: docker
+    dockerfilePath: Dockerfile
+    port: 8080
+    envVars:
+      - key: PORT
+        value: 8080

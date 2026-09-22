@@ -16,7 +16,7 @@ func TestNodeCreation(t *testing.T) {
 	logger := slog.Default()
 	config := &node.NodeConfig{
 		ID:                "test-node",
-		Address:           "0.0.0.0",
+		Address:           "127.0.0.1",
 		Port:              9001,
 		MaxPeers:          10,
 		HeartbeatInterval: 1 * time.Second,
@@ -34,7 +34,7 @@ func TestPeerDiscovery(t *testing.T) {
 
 	config1 := discovery.DiscoveryConfig{
 		NodeID:       "node-1",
-		Address:      "0.0.0.0",
+		Address:      "127.0.0.1",
 		Port:         9201,
 		Interval:     100 * time.Millisecond,
 		PeerTimeout:  1 * time.Second,
@@ -43,7 +43,7 @@ func TestPeerDiscovery(t *testing.T) {
 
 	config2 := discovery.DiscoveryConfig{
 		NodeID:       "node-2",
-		Address:      "0.0.0.0",
+		Address:      "127.0.0.1",
 		Port:         9202,
 		Interval:     100 * time.Millisecond,
 		PeerTimeout:  1 * time.Second,

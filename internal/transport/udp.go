@@ -19,11 +19,12 @@ type UDPMessage struct {
 }
 
 type UDPTransport struct {
-	nodeID     node.NodeID
-	conn       *net.UDPConn
-	peers      map[node.NodeID]*net.UDPConn
-	mu         sync.RWMutex
-	recvChan   chan *udpReceived
+	nodeID   node.NodeID
+	conn     *net.UDPConn
+	peers    map[node.NodeID]*net.UDPConn
+	mu       sync.RWMutex
+	recvChan chan *udpReceived
+	localIP  string
 }
 
 type udpReceived struct {
@@ -36,11 +37,17 @@ func NewUDP(nodeID node.NodeID) *UDPTransport {
 		nodeID:   nodeID,
 		peers:    make(map[node.NodeID]*net.UDPConn),
 		recvChan: make(chan *udpReceived, 100),
+		localIP:  GetLocalIP(),
 	}
 }
 
 func (u *UDPTransport) Listen(addr string) error {
-	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
+	listenAddr := addr
+	if addr == ":0" || addr == "" {
+		listenAddr = fmt.Sprintf("%s:0", u.localIP)
+	}
+
+	udpAddr, err := net.ResolveUDPAddr("udp4", listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to resolve address: %w", err)
 	}
@@ -152,4 +159,21 @@ func (u *UDPTransport) Close() error {
 		return u.conn.Close()
 	}
 	return nil
+}
+
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "0.0.0.0"
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+
+	return "0.0.0.0"
 }

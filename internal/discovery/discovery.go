@@ -2,7 +2,10 @@ package discovery
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
@@ -10,38 +13,52 @@ import (
 )
 
 type Discovery struct {
-	nodeID       node.NodeID
-	address      string
-	port         uint16
-	knownPorts   []uint16
-	peers        *PeerList
-	sender       *HeartbeatSender
-	listener     *HeartbeatListener
-	logger       *slog.Logger
-	interval     time.Duration
-	peerTimeout  time.Duration
-	mu           sync.RWMutex
+	nodeID      node.NodeID
+	address     string
+	port        uint16
+	conn        *net.UDPConn
+	peers       *PeerList
+	logger      *slog.Logger
+	interval    time.Duration
+	peerTimeout time.Duration
+	sequence    uint64
+	knownPorts  []uint16
+	mu          sync.RWMutex
+	stopCh      chan struct{}
 }
 
 type DiscoveryConfig struct {
-	NodeID       node.NodeID
-	Address      string
-	Port         uint16
-	Interval     time.Duration
-	PeerTimeout  time.Duration
-	KnownPorts   []uint16
+	NodeID      node.NodeID
+	Address     string
+	Port        uint16
+	Interval    time.Duration
+	PeerTimeout time.Duration
+	KnownPorts  []uint16
 }
+
+type HeartbeatMessage struct {
+	Type         string       `json:"type"`
+	NodeID       node.NodeID  `json:"node_id"`
+	Address      string       `json:"address"`
+	Port         uint16       `json:"port"`
+	Sequence     uint64       `json:"sequence"`
+	Capabilities []Capability `json:"capabilities"`
+	Timestamp    time.Time    `json:"timestamp"`
+}
+
+const MaxPacketSize = 4096
 
 func New(config DiscoveryConfig, logger *slog.Logger) *Discovery {
 	return &Discovery{
 		nodeID:      config.NodeID,
 		address:     config.Address,
 		port:        config.Port,
-		knownPorts:  config.KnownPorts,
 		peers:       NewPeerList(),
 		logger:      logger,
 		interval:    config.Interval,
 		peerTimeout: config.PeerTimeout,
+		knownPorts:  config.KnownPorts,
+		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -52,21 +69,17 @@ func (d *Discovery) Start(ctx context.Context) error {
 		"port", d.port,
 	)
 
-	d.sender = NewHeartbeatSender(d.nodeID, d.address, d.port, d.interval)
-	if err := d.sender.Start(d.knownPorts); err != nil {
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf(":%d", d.port))
+	if err != nil {
 		return err
 	}
 
-	d.listener = NewHeartbeatListener(d.nodeID, d.port)
-	if err := d.listener.Start(); err != nil {
+	d.conn, err = net.ListenUDP("udp4", addr)
+	if err != nil {
 		return err
 	}
 
-	d.listener.OnHeartbeat(func(msg HeartbeatMessage) {
-		d.handleHeartbeat(msg)
-	})
-
-	go d.listener.Listen()
+	go d.listenLoop(ctx)
 	go d.sendLoop(ctx)
 	go d.cleanupLoop(ctx)
 
@@ -74,21 +87,44 @@ func (d *Discovery) Start(ctx context.Context) error {
 }
 
 func (d *Discovery) Stop() error {
-	d.logger.Info("stopping discovery", "node_id", d.nodeID)
-
-	if d.sender != nil {
-		if err := d.sender.Stop(); err != nil {
-			d.logger.Warn("error stopping sender", "error", err)
-		}
+	close(d.stopCh)
+	if d.conn != nil {
+		return d.conn.Close()
 	}
-
-	if d.listener != nil {
-		if err := d.listener.Stop(); err != nil {
-			d.logger.Warn("error stopping listener", "error", err)
-		}
-	}
-
 	return nil
+}
+
+func (d *Discovery) listenLoop(ctx context.Context) {
+	buf := make([]byte, MaxPacketSize)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-d.stopCh:
+			return
+		default:
+		}
+
+		d.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		n, _, err := d.conn.ReadFromUDP(buf)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+			return
+		}
+
+		var msg HeartbeatMessage
+		if err := json.Unmarshal(buf[:n], &msg); err != nil {
+			continue
+		}
+
+		if msg.NodeID == d.nodeID {
+			continue
+		}
+
+		d.handleHeartbeat(msg)
+	}
 }
 
 func (d *Discovery) handleHeartbeat(msg HeartbeatMessage) {
@@ -119,39 +155,63 @@ func (d *Discovery) sendLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-d.stopCh:
+			return
 		case <-ticker.C:
-			if err := d.sender.Send(); err != nil {
-				d.logger.Warn("failed to send heartbeat", "error", err)
+			d.mu.Lock()
+			d.sequence++
+			seq := d.sequence
+			d.mu.Unlock()
+
+			msg := HeartbeatMessage{
+				Type:         "heartbeat",
+				NodeID:       d.nodeID,
+				Address:      d.address,
+				Port:         d.port,
+				Sequence:     seq,
+				Capabilities: []Capability{CapabilityRelay, CapabilityRelayMesh},
+				Timestamp:    time.Now(),
+			}
+
+			data, err := json.Marshal(msg)
+			if err != nil {
+				continue
+			}
+
+			for _, port := range d.knownPorts {
+				if port == d.port {
+					continue
+				}
+				addr := fmt.Sprintf("%s:%d", d.address, port)
+				udpAddr, err := net.ResolveUDPAddr("udp4", addr)
+				if err != nil {
+					continue
+				}
+				d.conn.WriteToUDP(data, udpAddr)
 			}
 		}
 	}
 }
 
 func (d *Discovery) cleanupLoop(ctx context.Context) {
-	ticker := time.NewTicker(d.interval * 2)
+	ticker := time.NewTicker(d.interval * 3)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-d.stopCh:
+			return
 		case <-ticker.C:
-			d.cleanup()
-		}
-	}
-}
-
-func (d *Discovery) cleanup() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	for _, peer := range d.peers.List() {
-		if !peer.IsAlive(d.peerTimeout) {
-			d.peers.Remove(peer.ID)
-			d.logger.Info("peer removed (timeout)",
-				"peer_id", peer.ID,
-				"last_seen", peer.LastSeen,
-			)
+			d.mu.Lock()
+			for _, peer := range d.peers.List() {
+				if !peer.IsAlive(d.peerTimeout) {
+					d.peers.Remove(peer.ID)
+					d.logger.Info("peer removed (timeout)", "peer_id", peer.ID)
+				}
+			}
+			d.mu.Unlock()
 		}
 	}
 }
@@ -168,8 +228,17 @@ func (d *Discovery) PeerCount() int {
 	return d.peers.Count()
 }
 
-func (d *Discovery) GetPeer(id node.NodeID) (*Peer, bool) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return d.peers.Get(id)
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "0.0.0.0"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "0.0.0.0"
 }

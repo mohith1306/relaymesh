@@ -16,6 +16,10 @@
         .full-width { grid-column: 1 / -1; }
         .node-list { display: flex; flex-direction: column; gap: 0.5rem; }
         .node-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #0f172a; border-radius: 0.375rem; border: 1px solid #334155; }
+        .node-item.local { border-color: #22c55e; background: #052e16; }
+        .node-id { font-weight: 600; color: #38bdf8; }
+        .node-device { color: #94a3b8; font-size: 0.75rem; margin-left: 0.5rem; }
+        .node-you { background: #22c55e; color: #0f172a; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.625rem; font-weight: 600; margin-left: 0.5rem; }
         .node-id { font-weight: 600; color: #38bdf8; }
         .node-state { padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 500; }
         .state-connected { background: #065f46; color: #34d399; }
@@ -128,9 +132,11 @@
                 return;
             }
             container.innerHTML = nodeList.map(n => `
-                <div class="node-item">
+                <div class="node-item ${n.is_local ? 'local' : ''}">
                     <div>
                         <span class="node-id">${n.id}</span>
+                        <span class="node-device">${n.device_name}</span>
+                        ${n.is_local ? '<span class="node-you">YOU</span>' : ''}
                         <span style="color: #64748b; margin-left: 0.5rem;">:${n.port}</span>
                     </div>
                     <div>
@@ -246,8 +252,8 @@
                                node.state === 'CONNECTED' ? '#38bdf8' :
                                node.state === 'DISCOVERING' ? '#fbbf24' : '#64748b';
                 ctx.fill();
-                ctx.strokeStyle = '#1e293b';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = node.is_local ? '#22c55e' : '#1e293b';
+                ctx.lineWidth = node.is_local ? 3 : 2;
                 ctx.stroke();
 
                 ctx.fillStyle = '#ffffff';
@@ -256,9 +262,10 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillText(node.id.replace('node-', ''), pos.x, pos.y);
 
-                ctx.fillStyle = '#94a3b8';
-                ctx.font = '10px sans-serif';
-                ctx.fillText(`:${node.port}`, pos.x, pos.y + 30);
+                const label = node.is_local ? 'YOU' : node.id;
+                ctx.fillStyle = node.is_local ? '#22c55e' : '#94a3b8';
+                ctx.font = node.is_local ? 'bold 10px sans-serif' : '10px sans-serif';
+                ctx.fillText(label, pos.x, pos.y + 30);
             });
         }
 

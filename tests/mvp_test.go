@@ -24,7 +24,7 @@ func TestMVPMeshNetwork(t *testing.T) {
 
 		config := &node.NodeConfig{
 			ID:                nodeID,
-			Address:           "0.0.0.0",
+			Address:           "127.0.0.1",
 			Port:              port,
 			MaxPeers:          10,
 			HeartbeatInterval: 100 * time.Millisecond,
@@ -35,7 +35,7 @@ func TestMVPMeshNetwork(t *testing.T) {
 
 		discConfig := discovery.DiscoveryConfig{
 			NodeID:      nodeID,
-			Address:     "0.0.0.0",
+			Address:     "127.0.0.1",
 			Port:        port,
 			Interval:    100 * time.Millisecond,
 			PeerTimeout: 1 * time.Second,

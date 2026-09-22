@@ -36,7 +36,7 @@ func TestSimulationMeshTopology(t *testing.T) {
 
 		cfg := &node.NodeConfig{
 			ID:                nodeID,
-			Address:           "0.0.0.0",
+			Address:           "127.0.0.1",
 			Port:              port,
 			MaxPeers:          10,
 			HeartbeatInterval: 100 * time.Millisecond,
@@ -45,7 +45,7 @@ func TestSimulationMeshTopology(t *testing.T) {
 
 		discCfg := discovery.DiscoveryConfig{
 			NodeID:      nodeID,
-			Address:     "0.0.0.0",
+			Address:     "127.0.0.1",
 			Port:        port,
 			Interval:    100 * time.Millisecond,
 			PeerTimeout: 1 * time.Second,

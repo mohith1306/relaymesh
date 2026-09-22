@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -19,16 +21,20 @@ type Dashboard struct {
 	collectors map[node.NodeID]*telemetry.MetricsCollector
 	logger     *slog.Logger
 	mu         sync.RWMutex
+	hostname   string
+	localIP    string
 }
 
 type NodeInfo struct {
-	ID        node.NodeID  `json:"id"`
-	Address   string       `json:"address"`
-	Port      uint16       `json:"port"`
-	State     string       `json:"state"`
-	Peers     []string     `json:"peers"`
-	Uptime    string       `json:"uptime"`
-	StartTime time.Time    `json:"-"`
+	ID         node.NodeID  `json:"id"`
+	Address    string       `json:"address"`
+	Port       uint16       `json:"port"`
+	State      string       `json:"state"`
+	Peers      []string     `json:"peers"`
+	Uptime     string       `json:"uptime"`
+	StartTime  time.Time    `json:"-"`
+	DeviceName string       `json:"device_name"`
+	IsLocal    bool         `json:"is_local"`
 }
 
 type NetworkState struct {
@@ -56,28 +62,94 @@ type Metrics struct {
 }
 
 func NewDashboard(logger *slog.Logger) *Dashboard {
+	hostname, _ := os.Hostname()
+	localIP := getLocalIP()
+
 	return &Dashboard{
 		nodes:      make(map[node.NodeID]*NodeInfo),
 		routers:    make(map[node.NodeID]*routing.Router),
 		collectors: make(map[node.NodeID]*telemetry.MetricsCollector),
 		logger:     logger,
+		hostname:   hostname,
+		localIP:    localIP,
 	}
+}
+
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "0.0.0.0"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "0.0.0.0"
 }
 
 func (d *Dashboard) RegisterNode(id node.NodeID, addr string, port uint16, router *routing.Router, collector *telemetry.MetricsCollector) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.nodes[id] = &NodeInfo{
-		ID:        id,
-		Address:   addr,
-		Port:      port,
-		State:     "DISCOVERING",
-		Peers:     []string{},
-		StartTime: time.Now(),
+	isLocal := addr == d.localIP || addr == "0.0.0.0" || addr == "127.0.0.1"
+	deviceName := string(id)
+	if isLocal {
+		deviceName = fmt.Sprintf("%s (This Device)", d.hostname)
 	}
-	d.routers[id] = router
-	d.collectors[id] = collector
+
+	if _, exists := d.nodes[id]; !exists {
+		d.nodes[id] = &NodeInfo{
+			ID:         id,
+			Address:    addr,
+			Port:       port,
+			State:      "DISCOVERING",
+			Peers:      []string{},
+			StartTime:  time.Now(),
+			DeviceName: deviceName,
+			IsLocal:    isLocal,
+		}
+	}
+	if router != nil {
+		d.routers[id] = router
+	}
+	if collector != nil {
+		d.collectors[id] = collector
+	}
+}
+
+func (d *Dashboard) RegisterWebNode(id node.NodeID, deviceName string, isWeb bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, exists := d.nodes[id]; !exists {
+		d.nodes[id] = &NodeInfo{
+			ID:         id,
+			Address:    "web",
+			Port:       0,
+			State:      "CONNECTED",
+			Peers:      []string{},
+			StartTime:  time.Now(),
+			DeviceName: deviceName,
+			IsLocal:    false,
+		}
+	}
+}
+
+func (d *Dashboard) RemoveNode(id node.NodeID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.nodes, id)
+	delete(d.routers, id)
+	delete(d.collectors, id)
+}
+
+func (d *Dashboard) GetNode(id node.NodeID) *NodeInfo {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.nodes[id]
 }
 
 func (d *Dashboard) UpdateNodeState(id node.NodeID, state string) {
