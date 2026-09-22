@@ -3,6 +3,7 @@ module github.com/relaymesh/relaymesh
 go 1.27.1
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
