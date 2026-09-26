@@ -30,6 +30,9 @@ type Config struct {
 	KnownDiscoveryPorts []uint16
 	HeartbeatInterval   time.Duration
 	PeerTimeout         time.Duration
+	// PSK, when non-empty, enables HMAC packet authentication on the
+	// data plane. All peers must share the key.
+	PSK []byte
 }
 
 type Stats struct {
@@ -41,9 +44,16 @@ type Stats struct {
 	Dropped   uint64
 }
 
+// RouteAdvisor optionally overrides next-hop selection (e.g. AI
+// recommendations). It must be safe to ignore: any failure falls back
+// to deterministic Dijkstra routing.
+type RouteAdvisor interface {
+	AdviseRoute(ctx context.Context, dest node.NodeID) (node.NodeID, bool)
+}
+
 // MeshNode wires discovery -> routing -> forwarding -> transport into a
-// working data plane. This is the Phase 1 v1 core: real UDP packets,
-// real multi-hop relay (A -> B -> C), real Dijkstra next-hop lookups.
+// working data plane: real UDP packets, real multi-hop relay,
+// real Dijkstra next-hop lookups, optional AI advisor.
 type MeshNode struct {
 	config    Config
 	logger    *slog.Logger
@@ -55,6 +65,21 @@ type MeshNode struct {
 	delivered chan forwarding.DeliveredPacket
 	sent      atomic.Uint64
 	seq       atomic.Uint64
+
+	// extraCB receives non-probe deliveries alongside the channel.
+	extraCB func(forwarding.DeliveredPacket)
+	// advisor optionally overrides next-hop selection.
+	advisor RouteAdvisor
+
+	// linkMu guards data-plane link health state.
+	linkMu sync.Mutex
+	// manualDown/autoDown track link state; peerStats holds health per
+	// peer; outstanding tracks in-flight probes so send/recv accounting
+	// stays exact even when pongs race probe bookkeeping.
+	manualDown  map[node.NodeID]bool
+	autoDown    map[node.NodeID]bool
+	peerStats   map[node.NodeID]*linkState
+	outstanding map[string]*probeFlight
 
 	mu     sync.Mutex
 	closed bool
@@ -69,24 +94,25 @@ func New(cfg Config, logger *slog.Logger) *MeshNode {
 	}
 
 	tr := transport.NewUDP(cfg.NodeID)
+	if len(cfg.PSK) > 0 {
+		tr.SetPSK(cfg.PSK)
+	}
 	router := routing.New(cfg.NodeID, logger.With("component", "routing"))
 	fwd := forwarding.New(cfg.NodeID, tr, logger.With("component", "forwarding"))
 
 	m := &MeshNode{
-		config:    cfg,
-		logger:    logger,
-		transport: tr,
-		router:    router,
-		forwarder: fwd,
-		delivered: make(chan forwarding.DeliveredPacket, 100),
+		config:      cfg,
+		logger:      logger,
+		transport:   tr,
+		router:      router,
+		forwarder:   fwd,
+		delivered:   make(chan forwarding.DeliveredPacket, 100),
+		manualDown:  make(map[node.NodeID]bool),
+		autoDown:    make(map[node.NodeID]bool),
+		peerStats:   make(map[node.NodeID]*linkState),
+		outstanding: make(map[string]*probeFlight),
 	}
-	fwd.OnDelivered(func(p forwarding.DeliveredPacket) {
-		select {
-		case m.delivered <- p:
-		default:
-			m.logger.Warn("delivered channel full, dropping notification", "packet_id", p.ID)
-		}
-	})
+	fwd.OnDelivered(m.classify)
 
 	discCfg := discovery.DiscoveryConfig{
 		NodeID:      cfg.NodeID,
@@ -118,6 +144,7 @@ func (m *MeshNode) Start(ctx context.Context) error {
 
 	go m.syncLoop(ctx)
 	go m.receiveLoop(ctx)
+	go m.probeLoop(ctx)
 
 	m.logger.Info("mesh node started",
 		"node_id", m.config.NodeID,
@@ -151,25 +178,51 @@ func (m *MeshNode) Forwarder() *forwarding.Forwarder { return m.forwarder }
 // Delivered returns a channel receiving packets destined for this node.
 func (m *MeshNode) Delivered() <-chan forwarding.DeliveredPacket { return m.delivered }
 
-// OnDelivered registers an additional delivery callback alongside the channel.
+// OnDelivered registers an additional delivery callback for non-probe
+// packets, alongside the Delivered channel.
 func (m *MeshNode) OnDelivered(cb func(forwarding.DeliveredPacket)) {
-	m.forwarder.OnDelivered(func(p forwarding.DeliveredPacket) {
-		select {
-		case m.delivered <- p:
-		default:
-		}
-		cb(p)
-	})
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.extraCB = cb
 }
 
-// Send transmits payload to dest via the computed mesh route.
+// SetAdvisor installs an optional next-hop advisor. A nil advisor
+// disables AI-assisted routing entirely.
+func (m *MeshNode) SetAdvisor(a RouteAdvisor) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.advisor = a
+}
+
+func (m *MeshNode) advisedNextHop(dest node.NodeID) (node.NodeID, bool) {
+	m.mu.Lock()
+	a := m.advisor
+	m.mu.Unlock()
+	if a == nil {
+		return "", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	nextHop, ok := a.AdviseRoute(ctx, dest)
+	if !ok || nextHop == "" {
+		return "", false
+	}
+	return nextHop, true
+}
+
+// Send transmits payload to dest via the mesh route. An advisor, when
+// set, is consulted first; any failure falls back to deterministic
+// routing, so AI can never break forwarding.
 func (m *MeshNode) Send(dest node.NodeID, payload []byte) error {
 	if dest == m.config.NodeID {
 		return fmt.Errorf("cannot send to self")
 	}
-	nextHop, ok := m.router.GetNextHop(dest)
+	nextHop, ok := m.advisedNextHop(dest)
 	if !ok {
-		return fmt.Errorf("no route to %s", dest)
+		nextHop, ok = m.router.GetNextHop(dest)
+		if !ok {
+			return fmt.Errorf("no route to %s", dest)
+		}
 	}
 	seq := m.seq.Add(1)
 	pkt := forwarding.NewPacket(m.config.NodeID, dest, payload, forwarding.DefaultTTL)
@@ -196,6 +249,11 @@ func (m *MeshNode) Stats() Stats {
 	}
 }
 
+// AuthFailures counts data-plane packets dropped for bad/missing auth tags.
+func (m *MeshNode) AuthFailures() uint64 {
+	return m.transport.AuthFailures()
+}
+
 func (m *MeshNode) syncLoop(ctx context.Context) {
 	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
@@ -219,12 +277,18 @@ func (m *MeshNode) sync() {
 	peers := m.discovery.Snapshot()
 
 	for _, p := range peers {
+		m.linkMu.Lock()
+		down := m.isDownLocked(p.ID)
+		m.linkMu.Unlock()
+		if down {
+			continue
+		}
 		dataAddr := peerDataAddress(p, m.config.Address)
 		if err := m.transport.Connect(p.ID, dataAddr); err != nil {
 			m.logger.Debug("transport connect failed", "peer", p.ID, "addr", dataAddr, "error", err)
 			continue
 		}
-		m.router.UpdateLink(self, p.ID, DefaultLatency, DefaultBandwidth, DefaultLoss)
+		m.router.UpdateLink(self, p.ID, m.linkLatency(p.ID), DefaultBandwidth, DefaultLoss)
 
 		for _, remote := range p.KnownPeers {
 			if remote == self {

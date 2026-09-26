@@ -55,10 +55,17 @@ func (c *Client) GetRecommendation(ctx context.Context,
 	collectors map[node.NodeID]*telemetry.MetricsCollector,
 	peers []node.NodeID,
 ) (*pb.RouteRecommendation, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("nil context")
+	}
+	srcCollector, ok := collectors[source]
+	if !ok || srcCollector == nil {
+		return nil, fmt.Errorf("no telemetry collector for %s", source)
+	}
 
 	state := &pb.NetworkState{
 		NodeId:        string(source),
-		FeatureVector: collectors[source].ToFeatureVector(),
+		FeatureVector: srcCollector.ToFeatureVector(),
 		Timestamp:     time.Now().Unix(),
 	}
 

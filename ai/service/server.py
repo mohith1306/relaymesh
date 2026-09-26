@@ -43,6 +43,7 @@ class AIServicer(relaymesh_pb2_grpc.AIServiceServicer):
         recommendation = relaymesh_pb2.RouteRecommendation(
             source=request.state.node_id,
             destination=result.get('destination', ''),
+            path=result.get('path', [request.state.node_id, result.get('destination', '')]),
             confidence=result.get('confidence', 0.0),
             score=result.get('score', 0.0),
             timestamp=int(time.time()),

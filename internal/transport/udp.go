@@ -1,9 +1,13 @@
 package transport
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -24,6 +28,50 @@ type UDPTransport struct {
 	mu       sync.RWMutex
 	recvChan chan *udpReceived
 	localIP  string
+	// psk, when non-empty, enables HMAC-SHA256 packet authentication:
+	// outbound packets are signed, inbound packets without a valid tag
+	// are dropped before reaching the forwarder.
+	psk          []byte
+	authFailures atomic.Uint64
+}
+
+// SetPSK enables (non-empty) or disables (empty) packet authentication.
+func (u *UDPTransport) SetPSK(psk []byte) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if len(psk) == 0 {
+		u.psk = nil
+		return
+	}
+	u.psk = append([]byte{}, psk...)
+}
+
+// AuthFailures counts inbound packets dropped for bad/missing auth tags.
+func (u *UDPTransport) AuthFailures() uint64 {
+	return u.authFailures.Load()
+}
+
+func computeTag(psk, data []byte) []byte {
+	h := hmac.New(sha256.New, psk)
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// verifyTag checks the packet's HMAC over its untagged encoding using
+// constant-time comparison. Missing tags fail closed.
+func verifyTag(psk []byte, msg *pb.RelayPacket) bool {
+	if len(msg.AuthTag) == 0 {
+		return false
+	}
+	tag := msg.AuthTag
+	msg.AuthTag = nil
+	unsigned, err := proto.Marshal(msg)
+	msg.AuthTag = tag
+	if err != nil {
+		return false
+	}
+	expected := computeTag(psk, unsigned)
+	return subtle.ConstantTimeCompare(tag, expected) == 1
 }
 
 type udpReceived struct {
@@ -106,6 +154,17 @@ func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 		Priority:    pkt.Priority,
 	}
 
+	u.mu.RLock()
+	psk := u.psk
+	u.mu.RUnlock()
+	if len(psk) > 0 {
+		unsigned, err := proto.Marshal(msg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal packet: %w", err)
+		}
+		msg.AuthTag = computeTag(psk, unsigned)
+	}
+
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal packet: %w", err)
@@ -138,6 +197,14 @@ func (u *UDPTransport) readLoop() {
 		}
 
 		if msg.Version != PacketVersion {
+			continue
+		}
+
+		u.mu.RLock()
+		psk := u.psk
+		u.mu.RUnlock()
+		if len(psk) > 0 && !verifyTag(psk, &msg) {
+			u.authFailures.Add(1)
 			continue
 		}
 

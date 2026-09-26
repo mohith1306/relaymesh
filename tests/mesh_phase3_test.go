@@ -102,6 +102,9 @@ func TestMeshPhase3Gateway(t *testing.T) {
 	}
 	t.Logf("route A -> GW confirmed")
 
+	// The relay needs its own route before it can forward.
+	waitRouteTo(t, nodeB, "node-GW", 10*time.Second)
+
 	// Round-trip data through the mesh to the "internet" and back.
 	resp, err := gateway.SendEgressRequest(nodeA, "node-GW", "127.0.0.1", 19711, []byte("ping-internet"), 5*time.Second)
 	if err != nil {

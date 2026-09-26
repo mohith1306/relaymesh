@@ -24,6 +24,7 @@ message RelayPacket {
     uint32 hop_count = 9;
     repeated string path = 10;
     uint32 priority = 11;
+    bytes auth_tag = 12;
 }
 
 message RoutingUpdate {
@@ -98,6 +99,17 @@ message EgressResponse {
     bool ok = 2;
     bytes data = 3;
     string error = 4;
+}
+
+message LinkProbe {
+    string probe_id = 1;
+    int64 sent_at_unix_nano = 2;
+}
+
+message LinkPong {
+    string probe_id = 1;
+    int64 sent_at_unix_nano = 2;
+    int64 replied_at_unix_nano = 3;
 }
 
 message NetworkMetrics {

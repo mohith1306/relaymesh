@@ -28,7 +28,15 @@ class QLearningAgent:
         self.training_history: List[Dict] = []
 
     def get_state_key(self, state: np.ndarray) -> str:
-        return ",".join([f"{s:.2f}" for s in state[:5]])
+        # Coarse key over STABLE features only: volatile latency/loss
+        # would make every state unique and prevent any generalization.
+        # Layout: [neighbors, nodes, active, latency, loss, bw, paths, cost, ..]
+        n_neighbors = int(round(float(state[0]))) if len(state) > 0 else 0
+        n_active = int(round(float(state[2]))) if len(state) > 2 else 0
+        n_paths = int(round(float(state[6]))) if len(state) > 6 else 0
+        cost = float(state[7]) if len(state) > 7 else 0.0
+        cost_bucket = int(cost // 10) if cost != float('inf') else 999
+        return f"{n_neighbors},{n_active},{n_paths},{cost_bucket}"
 
     def get_q_values(self, state_key: str) -> np.ndarray:
         if state_key not in self.q_table:
@@ -133,7 +141,12 @@ class DQNAgent:
         self.training_history: List[Dict] = []
 
     def get_state_key(self, state: np.ndarray) -> str:
-        return ",".join([f"{s:.2f}" for s in state[:5]])
+        n_neighbors = int(round(float(state[0]))) if len(state) > 0 else 0
+        n_active = int(round(float(state[2]))) if len(state) > 2 else 0
+        n_paths = int(round(float(state[6]))) if len(state) > 6 else 0
+        cost = float(state[7]) if len(state) > 7 else 0.0
+        cost_bucket = int(cost // 10) if cost != float('inf') else 999
+        return f"{n_neighbors},{n_active},{n_paths},{cost_bucket}"
 
     def choose_action(self, state: np.ndarray, valid_actions: List[int] = None) -> int:
         if np.random.random() < self.epsilon:

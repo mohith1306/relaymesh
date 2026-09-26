@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
@@ -11,23 +12,26 @@ import (
 )
 
 type AIRouter struct {
-	router          *routing.Router
-	client          *Client
-	safety          *SafetyValidator
-	collectors      map[node.NodeID]*telemetry.MetricsCollector
-	peers           []node.NodeID
-	logger          *slog.Logger
-	aiAvailable     bool
+	source             node.NodeID
+	router             *routing.Router
+	client             *Client
+	safety             *SafetyValidator
+	collectors         map[node.NodeID]*telemetry.MetricsCollector
+	peers              []node.NodeID
+	logger             *slog.Logger
+	aiAvailable        bool
 	lastRecommendation time.Time
-	mu              sync.RWMutex
+	mu                 sync.RWMutex
 }
 
 func NewAIRouter(
+	source node.NodeID,
 	router *routing.Router,
 	client *Client,
 	logger *slog.Logger,
 ) *AIRouter {
 	return &AIRouter{
+		source:      source,
 		router:      router,
 		client:      client,
 		safety:      NewSafetyValidator(router, logger),
@@ -49,7 +53,7 @@ func (ar *AIRouter) SetCollector(nodeID node.NodeID, collector *telemetry.Metric
 	ar.collectors[nodeID] = collector
 }
 
-func (ar *AIRouter) GetRoute(source, destination node.NodeID) (*routing.Route, bool) {
+func (ar *AIRouter) GetRoute(ctx context.Context, source, destination node.NodeID) (*routing.Route, bool) {
 	ar.mu.RLock()
 	defer ar.mu.RUnlock()
 
@@ -62,7 +66,7 @@ func (ar *AIRouter) GetRoute(source, destination node.NodeID) (*routing.Route, b
 	}
 
 	rec, err := ar.client.GetRecommendation(
-		nil,
+		ctx,
 		source,
 		destination,
 		ar.collectors,
@@ -95,6 +99,11 @@ func (ar *AIRouter) GetRoute(source, destination node.NodeID) (*routing.Route, b
 
 	ar.lastRecommendation = time.Now()
 
+	if len(path) < 2 {
+		ar.logger.Warn("AI recommendation path too short, using fallback", "path", path)
+		return ar.router.GetRoute(destination)
+	}
+
 	route := &routing.Route{
 		Destination: destination,
 		NextHop:     path[1],
@@ -115,7 +124,10 @@ func (ar *AIRouter) GetRoute(source, destination node.NodeID) (*routing.Route, b
 	return route, true
 }
 
-func (ar *AIRouter) OnRouteUsed(source, destination node.NodeID, success bool, latency float64) {
+func (ar *AIRouter) OnRouteUsed(ctx context.Context, source, destination node.NodeID, success bool, latency float64) {
+	if ctx == nil {
+		return
+	}
 	reward := 0.0
 	if success {
 		reward = 10.0 - latency*0.1
@@ -124,11 +136,12 @@ func (ar *AIRouter) OnRouteUsed(source, destination node.NodeID, success bool, l
 	}
 
 	routeID := string(source) + "-" + string(destination)
-	ar.client.ReportFeedback(nil, routeID, reward, success)
+	if err := ar.client.ReportFeedback(ctx, routeID, reward, success); err != nil {
+		ar.logger.Debug("feedback report failed", "error", err)
+	}
 }
 
-func (ar *AIRouter) SetAIAvailable(available bool) {
-	ar.mu.Lock()
+func (ar *AIRouter) SetAIAvailable(available bool) {	ar.mu.Lock()
 	defer ar.mu.Unlock()
 	ar.aiAvailable = available
 	ar.logger.Info("AI availability changed", "available", available)
@@ -138,4 +151,19 @@ func (ar *AIRouter) IsAIAvailable() bool {
 	ar.mu.RLock()
 	defer ar.mu.RUnlock()
 	return ar.aiAvailable
+}
+
+// AdviseRoute implements mesh.RouteAdvisor: it returns the AI-chosen
+// next hop when the safety validator accepts the recommendation, and
+// reports false so the caller falls back to deterministic routing
+// otherwise. AI can never break forwarding — worst case is fallback.
+func (ar *AIRouter) AdviseRoute(ctx context.Context, dest node.NodeID) (node.NodeID, bool) {
+	route, ok := ar.GetRoute(ctx, ar.source, dest)
+	if !ok {
+		return "", false
+	}
+	if route.NextHop == "" {
+		return "", false
+	}
+	return route.NextHop, true
 }

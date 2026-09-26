@@ -29,6 +29,8 @@ type Forwarder struct {
 	forwarded         uint64
 	delivered         uint64
 	dropped           uint64
+	forwardedBytes    uint64
+	deliveredBytes    uint64
 }
 
 func New(nodeID node.NodeID, transport transport.Transport, logger *slog.Logger) *Forwarder {
@@ -50,7 +52,7 @@ func (f *Forwarder) OnDelivered(cb func(DeliveredPacket)) {
 
 func (f *Forwarder) Forward(pkt *Packet, nextHop node.NodeID) error {
 	if pkt.ID == "" {
-		pkt.ID = PacketID(generateID())
+		pkt.ID = PacketID(generateID(f.nodeID))
 	}
 	if pkt.TTL == 0 {
 		pkt.TTL = DefaultTTL
@@ -117,6 +119,7 @@ func (f *Forwarder) Forward(pkt *Packet, nextHop node.NodeID) error {
 
 	f.mu.Lock()
 	f.forwarded++
+	f.forwardedBytes += uint64(len(pkt.Payload))
 	f.mu.Unlock()
 	return nil
 }
@@ -140,6 +143,7 @@ func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
 	if pkt.Destination == f.nodeID {
 		f.mu.Lock()
 		f.delivered++
+		f.deliveredBytes += uint64(len(pkt.Payload))
 		cb := f.onDelivered
 		f.mu.Unlock()
 		fullPath := append(append([]node.NodeID{}, pkt.Path...), f.nodeID)
@@ -200,7 +204,7 @@ func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
 		Priority:    pkt.Priority,
 	}
 	if forwardPkt.ID == "" {
-		forwardPkt.ID = PacketID(generateID())
+		forwardPkt.ID = PacketID(generateID(f.nodeID))
 	}
 
 	if err := f.Forward(forwardPkt, nextHop); err != nil {
@@ -228,9 +232,11 @@ func (f *Forwarder) GetForwardingTable() *ForwardingTable {
 }
 
 type ForwarderStats struct {
-	Forwarded uint64
-	Delivered uint64
-	Dropped   uint64
+	Forwarded      uint64
+	Delivered      uint64
+	Dropped        uint64
+	ForwardedBytes uint64
+	DeliveredBytes uint64
 }
 
 func (f *Forwarder) Stats() ForwarderStats {

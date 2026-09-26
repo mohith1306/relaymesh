@@ -35,6 +35,7 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 	sendMsg := flag.String("send-msg", "hello-mesh", "Phase 1 test: message payload to send")
 	sendInterval := flag.Duration("send-interval", 5*time.Second, "Phase 1 test: interval between test messages")
 	knownPorts := flag.String("known-ports", "9001,9002,9003,9004,9005", "Comma-separated discovery ports to probe for peers")
+	psk := flag.String("psk", "", "Preshared key for data-plane packet authentication (all peers must match)")
 	flag.Parse()
 
 	if *generateConfig {
@@ -132,6 +133,7 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 		KnownDiscoveryPorts: knownDiscoveryPorts,
 		HeartbeatInterval:   nodeConfig.HeartbeatInterval,
 		PeerTimeout:         nodeConfig.PeerTimeout,
+		PSK:                 []byte(*psk),
 	}, logger.With("component", "mesh"))
 	if err := meshNode.Start(ctx); err != nil {
 		logger.Error("failed to start mesh node", "error", err)
@@ -147,9 +149,10 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 		if err := aiClient.Connect(ctx); err != nil {
 			logger.Warn("failed to connect to AI service, running without AI", "error", err)
 		} else {
-			aiRouter = ai.NewAIRouter(router, aiClient, logger.With("component", "ai-router"))
+			aiRouter = ai.NewAIRouter(nodeConfig.ID, router, aiClient, logger.With("component", "ai-router"))
 			aiRouter.SetAIAvailable(true)
 			aiRouter.SetCollector(nodeConfig.ID, collector)
+			meshNode.SetAdvisor(aiRouter)
 			logger.Info("AI routing enabled", "ai_addr", *aiAddr)
 		}
 	}
@@ -175,6 +178,15 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 				}
 				dashboard.UpdatePeers(nodeConfig.ID, peerIDs)
 				dashboard.UpdateNodeState(nodeConfig.ID, n.State().String())
+				meshNode.SyncTelemetry(collector)
+				if aiRouter != nil {
+					ids := make([]node.NodeID, 0, len(peers)+1)
+					ids = append(ids, nodeConfig.ID)
+					for _, p := range peers {
+						ids = append(ids, p.ID)
+					}
+					aiRouter.SetPeers(ids)
+				}
 			}
 		}
 	}()

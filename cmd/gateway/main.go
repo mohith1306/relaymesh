@@ -27,6 +27,7 @@ func main() {
 	addr := flag.String("address", "", "Listen address (overrides config)")
 	logLevel := flag.String("log-level", "info", "Log level")
 	knownPorts := flag.String("known-ports", "9001,9002,9003,9004,9005", "Comma-separated discovery ports to probe for peers")
+	psk := flag.String("psk", "", "Preshared key for data-plane packet authentication (all peers must match)")
 	flag.Parse()
 
 	level := slog.LevelInfo
@@ -104,6 +105,7 @@ func main() {
 		KnownDiscoveryPorts: knownDiscoveryPorts,
 		HeartbeatInterval:   nodeConfig.HeartbeatInterval,
 		PeerTimeout:         nodeConfig.PeerTimeout,
+		PSK:                 []byte(*psk),
 	}, logger.With("component", "gateway"))
 	if err := gateway.Start(ctx); err != nil {
 		logger.Error("failed to start gateway", "error", err)
