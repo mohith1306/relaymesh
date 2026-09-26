@@ -1,105 +1,89 @@
 package gateway
 
 import (
-	"net"
 	"sync"
 	"time"
+
+	"github.com/relaymesh/relaymesh/internal/node"
 )
 
-type NATEntry struct {
-	InternalAddr *net.UDPAddr
-	ExternalAddr *net.UDPAddr
-	Protocol     string
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
+// Flow tracks one mesh-to-internet egress flow so return traffic can be
+// matched back to the requesting mesh node. Flows expire; only tracked
+// flows may receive return traffic.
+type Flow struct {
+	Source    node.NodeID
+	RequestID string
+	Target    string
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }
 
 type NATTable struct {
-	entries map[string]*NATEntry
-	mu      sync.RWMutex
+	flows map[string]*Flow
+	mu    sync.RWMutex
 }
 
 func NewNATTable() *NATTable {
-	return &NATTable{
-		entries: make(map[string]*NATEntry),
+	return &NATTable{flows: make(map[string]*Flow)}
+}
+
+func flowKey(source node.NodeID, requestID string) string {
+	return string(source) + "|" + requestID
+}
+
+// Track records an egress flow. Expired entries are refreshed.
+func (nt *NATTable) Track(source node.NodeID, requestID, target string, ttl time.Duration) {
+	nt.mu.Lock()
+	defer nt.mu.Unlock()
+	nt.flows[flowKey(source, requestID)] = &Flow{
+		Source:    source,
+		RequestID: requestID,
+		Target:    target,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(ttl),
 	}
 }
 
-func (nt *NATTable) AddEntry(entry *NATEntry) string {
+// Lookup returns the flow if it exists and has not expired.
+func (nt *NATTable) Lookup(source node.NodeID, requestID string) (*Flow, bool) {
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
-
-	key := entry.InternalAddr.String()
-	nt.entries[key] = entry
-	return key
-}
-
-func (nt *NATTable) GetEntry(key string) (*NATEntry, bool) {
-	nt.mu.RLock()
-	defer nt.mu.RUnlock()
-
-	entry, ok := nt.entries[key]
+	f, ok := nt.flows[flowKey(source, requestID)]
 	if !ok {
 		return nil, false
 	}
-
-	if time.Now().After(entry.ExpiresAt) {
-		delete(nt.entries, key)
+	if time.Now().After(f.ExpiresAt) {
+		delete(nt.flows, flowKey(source, requestID))
 		return nil, false
 	}
-
-	return entry, true
+	return f, true
 }
 
-func (nt *NATTable) RemoveEntry(key string) {
-	nt.mu.Lock()
-	defer nt.mu.Unlock()
-	delete(nt.entries, key)
-}
-
+// Cleanup removes expired flows and returns the removal count.
 func (nt *NATTable) Cleanup() int {
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
-
 	removed := 0
 	now := time.Now()
-	for key, entry := range nt.entries {
-		if now.After(entry.ExpiresAt) {
-			delete(nt.entries, key)
+	for key, f := range nt.flows {
+		if now.After(f.ExpiresAt) {
+			delete(nt.flows, key)
 			removed++
 		}
 	}
 	return removed
 }
 
-func (nt *NATTable) GetExternalAddr(internal *net.UDPAddr) (*net.UDPAddr, bool) {
+// Count returns the number of live flows.
+func (nt *NATTable) Count() int {
 	nt.mu.RLock()
 	defer nt.mu.RUnlock()
-
-	key := internal.String()
-	entry, ok := nt.entries[key]
-	if !ok {
-		return nil, false
-	}
-
-	if time.Now().After(entry.ExpiresAt) {
-		delete(nt.entries, key)
-		return nil, false
-	}
-
-	return entry.ExternalAddr, true
-}
-
-func (nt *NATTable) GetInternalAddr(external *net.UDPAddr) (*net.UDPAddr, bool) {
-	nt.mu.RLock()
-	defer nt.mu.RUnlock()
-
-	for _, entry := range nt.entries {
-		if entry.ExternalAddr.String() == external.String() {
-			if time.Now().Before(entry.ExpiresAt) {
-				return entry.InternalAddr, true
-			}
+	n := 0
+	now := time.Now()
+	for _, f := range nt.flows {
+		if now.Before(f.ExpiresAt) {
+			n++
 		}
 	}
-	return nil, false
+	return n
 }

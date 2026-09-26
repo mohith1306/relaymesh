@@ -85,6 +85,21 @@ message RouteInvalidation {
     int64 timestamp = 4;
 }
 
+message EgressRequest {
+    string request_id = 1;
+    string target_host = 2;
+    uint32 target_port = 3;
+    bytes data = 4;
+    uint32 timeout_ms = 5;
+}
+
+message EgressResponse {
+    string request_id = 1;
+    bool ok = 2;
+    bytes data = 3;
+    string error = 4;
+}
+
 message NetworkMetrics {
     double latency = 1;
     double packet_loss = 2;
