@@ -3,6 +3,7 @@ package routing
 import (
 	"math"
 	"sync"
+	"time"
 
 	"github.com/relaymesh/relaymesh/internal/node"
 )
@@ -17,6 +18,10 @@ type Link struct {
 	PacketLoss float64
 	Weight     float64
 	IsActive   bool
+	// UpdatedAt is the last time this link was confirmed alive.
+	// Links not refreshed within the expiry window are pruned so
+	// learned multi-hop routes disappear when the path breaks.
+	UpdatedAt time.Time
 }
 
 type Graph struct {
@@ -34,6 +39,10 @@ func (g *Graph) AddLink(link *Link) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	if link.UpdatedAt.IsZero() {
+		link.UpdatedAt = time.Now()
+	}
+
 	if _, ok := g.links[link.From]; !ok {
 		g.links[link.From] = make(map[node.NodeID]*Link)
 	}
@@ -49,6 +58,7 @@ func (g *Graph) AddLink(link *Link) {
 		Bandwidth:  link.Bandwidth,
 		PacketLoss: link.PacketLoss,
 		Weight:     link.Weight,
+		UpdatedAt:  link.UpdatedAt,
 	}
 }
 
@@ -62,6 +72,37 @@ func (g *Graph) RemoveLink(from, to node.NodeID) {
 	if hops, ok := g.links[to]; ok {
 		delete(hops, from)
 	}
+}
+
+// RemoveStaleLinks drops links not refreshed within maxAge and returns
+// the removed pairs. Callers should rebuild derived routing state.
+func (g *Graph) RemoveStaleLinks(maxAge time.Duration) [][2]node.NodeID {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	cutoff := time.Now().Add(-maxAge)
+	var removed [][2]node.NodeID
+	seen := make(map[[2]node.NodeID]bool)
+	for from, hops := range g.links {
+		for to, link := range hops {
+			if link.UpdatedAt.After(cutoff) {
+				continue
+			}
+			pair := [2]node.NodeID{from, to}
+			rev := [2]node.NodeID{to, from}
+			if seen[pair] || seen[rev] {
+				continue
+			}
+			seen[pair] = true
+			seen[rev] = true
+			delete(hops, to)
+			if revHops, ok := g.links[to]; ok {
+				delete(revHops, from)
+			}
+			removed = append(removed, pair)
+		}
+	}
+	return removed
 }
 
 func (g *Graph) GetNeighbors(id node.NodeID) []node.NodeID {

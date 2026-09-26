@@ -1,24 +1,21 @@
 package transport
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/relaymesh/relaymesh/api/proto"
 	"github.com/relaymesh/relaymesh/internal/node"
 )
 
-type UDPMessage struct {
-	Source      node.NodeID `json:"source"`
-	Destination node.NodeID `json:"destination"`
-	Payload     []byte      `json:"payload"`
-	Sequence    uint64      `json:"sequence"`
-	ID          string      `json:"id"`
-	TTL         uint32      `json:"ttl"`
-	Timestamp   time.Time   `json:"timestamp"`
-}
+// PacketVersion is the mesh wire-protocol version. Packets with a
+// different version are dropped so old and new nodes fail loudly
+// instead of misrouting.
+const PacketVersion uint32 = 1
 
 type UDPTransport struct {
 	nodeID   node.NodeID
@@ -95,17 +92,21 @@ func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 		return fmt.Errorf("peer %s not connected", peer)
 	}
 
-	msg := UDPMessage{
-		Source:      pkt.Source,
-		Destination: pkt.Destination,
-		Payload:     pkt.Payload,
+	msg := &pb.RelayPacket{
+		Source:      string(pkt.Source),
+		Destination: string(pkt.Destination),
 		Sequence:    pkt.Sequence,
-		ID:          pkt.ID,
-		TTL:         pkt.TTL,
-		Timestamp:   time.Now(),
+		Ttl:         pkt.TTL,
+		Payload:     pkt.Payload,
+		Timestamp:   time.Now().UnixNano(),
+		Version:     PacketVersion,
+		PacketId:    pkt.ID,
+		HopCount:    uint32(len(pkt.Path)),
+		Path:        nodeIDsToStrings(pkt.Path),
+		Priority:    pkt.Priority,
 	}
 
-	data, err := json.Marshal(msg)
+	data, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal packet: %w", err)
 	}
@@ -131,27 +132,33 @@ func (u *UDPTransport) readLoop() {
 			return
 		}
 
-		var msg UDPMessage
-		if err := json.Unmarshal(buf[:n], &msg); err != nil {
+		var msg pb.RelayPacket
+		if err := proto.Unmarshal(buf[:n], &msg); err != nil {
 			continue
 		}
 
-		if msg.Source == u.nodeID {
+		if msg.Version != PacketVersion {
+			continue
+		}
+
+		if node.NodeID(msg.Source) == u.nodeID {
 			continue
 		}
 
 		pkt := &Packet{
-			Source:      msg.Source,
-			Destination: msg.Destination,
+			Source:      node.NodeID(msg.Source),
+			Destination: node.NodeID(msg.Destination),
 			Payload:     msg.Payload,
 			Sequence:    msg.Sequence,
-			ID:          msg.ID,
-			TTL:         msg.TTL,
+			ID:          msg.PacketId,
+			TTL:         msg.Ttl,
+			Path:        stringsToNodeIDs(msg.Path),
+			Priority:    msg.Priority,
 		}
 
 		u.recvChan <- &udpReceived{
 			pkt:  pkt,
-			from: msg.Source,
+			from: pkt.Source,
 		}
 
 		_ = remoteAddr
@@ -172,8 +179,23 @@ func (u *UDPTransport) Close() error {
 	return nil
 }
 
-func GetLocalIP() string {
-	addrs, err := net.InterfaceAddrs()
+func nodeIDsToStrings(ids []node.NodeID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, string(id))
+	}
+	return out
+}
+
+func stringsToNodeIDs(strs []string) []node.NodeID {
+	out := make([]node.NodeID, 0, len(strs))
+	for _, s := range strs {
+		out = append(out, node.NodeID(s))
+	}
+	return out
+}
+
+func GetLocalIP() string {	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "0.0.0.0"
 	}

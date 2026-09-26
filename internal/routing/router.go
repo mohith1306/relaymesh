@@ -45,6 +45,33 @@ func (r *Router) RemoveLink(from, to node.NodeID) {
 	r.table.RemoveAllFrom(to)
 }
 
+// PruneStaleLinks removes graph links not refreshed within maxAge and
+// rebuilds the routing table so learned multi-hop routes disappear
+// when the underlying path breaks. Returns the pruned link count.
+func (r *Router) PruneStaleLinks(maxAge time.Duration) int {
+	removed := r.graph.RemoveStaleLinks(maxAge)
+	if len(removed) == 0 {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.table.Clear()
+	r.table.Cleanup()
+	results := r.dijkstra.FindAllPaths(r.nodeID)
+	for dest, result := range results {
+		if !result.Found || len(result.Path) < 2 {
+			continue
+		}
+		route := NewRoute(dest, result.Path[1], result.Path, result.Cost, result.HopCount, 5*time.Minute)
+		r.table.AddRoute(route)
+	}
+	r.logger.Debug("pruned stale links",
+		"removed", len(removed),
+		"node_id", r.nodeID,
+	)
+	return len(removed)
+}
+
 func (r *Router) GetRoute(destination node.NodeID) (*Route, bool) {
 	if destination == r.nodeID {
 		return &Route{

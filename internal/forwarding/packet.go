@@ -19,6 +19,19 @@ type Packet struct {
 	TTL         uint32
 	CreatedAt   time.Time
 	HopCount    uint32
+	// Path records every node that has handled the packet, in order,
+	// starting with the source. Used for loop prevention and tracing.
+	Path     []node.NodeID
+	Priority uint32
+}
+
+func (p *Packet) HasVisited(id node.NodeID) bool {
+	for _, n := range p.Path {
+		if n == id {
+			return true
+		}
+	}
+	return false
 }
 
 func NewPacket(source, destination node.NodeID, payload []byte, ttl uint32) *Packet {

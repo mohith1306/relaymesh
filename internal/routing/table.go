@@ -102,8 +102,7 @@ func (t *Table) GetRoutesTo(dest node.NodeID) []*Route {
 	return routes
 }
 
-func (t *Table) Cleanup() int {
-	t.mu.Lock()
+func (t *Table) Cleanup() int {	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	removed := 0
@@ -121,8 +120,7 @@ func (t *Table) Cleanup() int {
 	return removed
 }
 
-func (t *Table) GetAllDestinations() []node.NodeID {
-	t.mu.RLock()
+func (t *Table) GetAllDestinations() []node.NodeID {	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	dests := make([]node.NodeID, 0, len(t.routes))
@@ -138,4 +136,12 @@ func (t *Table) GetNextHop(dest node.NodeID) (node.NodeID, bool) {
 		return "", false
 	}
 	return route.NextHop, true
+}
+
+// Clear drops every route. Used after topology changes so the table
+// is rebuilt from the current graph instead of serving stale paths.
+func (t *Table) Clear() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.routes = make(map[node.NodeID]map[node.NodeID]*Route)
 }

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.36.1
-// source: api/proto/relaymesh.proto
+// source: relaymesh.proto
 
 package proto
 
@@ -193,7 +193,7 @@ var RoutingService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/proto/relaymesh.proto",
+	Metadata: "relaymesh.proto",
 }
 
 const (
@@ -371,7 +371,7 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/proto/relaymesh.proto",
+	Metadata: "relaymesh.proto",
 }
 
 const (
@@ -511,5 +511,5 @@ var TelemetryService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/proto/relaymesh.proto",
+	Metadata: "relaymesh.proto",
 }
