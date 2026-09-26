@@ -11,6 +11,8 @@ type Packet struct {
 	Destination node.NodeID
 	Payload     []byte
 	Sequence    uint64
+	ID          string
+	TTL         uint32
 }
 
 type Transport interface {

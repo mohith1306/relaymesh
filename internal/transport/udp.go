@@ -15,6 +15,8 @@ type UDPMessage struct {
 	Destination node.NodeID `json:"destination"`
 	Payload     []byte      `json:"payload"`
 	Sequence    uint64      `json:"sequence"`
+	ID          string      `json:"id"`
+	TTL         uint32      `json:"ttl"`
 	Timestamp   time.Time   `json:"timestamp"`
 }
 
@@ -62,6 +64,13 @@ func (u *UDPTransport) Listen(addr string) error {
 }
 
 func (u *UDPTransport) Connect(peer node.NodeID, addr string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if _, exists := u.peers[peer]; exists {
+		return nil
+	}
+
 	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		return fmt.Errorf("failed to resolve peer address: %w", err)
@@ -72,9 +81,7 @@ func (u *UDPTransport) Connect(peer node.NodeID, addr string) error {
 		return fmt.Errorf("failed to connect to peer: %w", err)
 	}
 
-	u.mu.Lock()
 	u.peers[peer] = conn
-	u.mu.Unlock()
 
 	return nil
 }
@@ -93,6 +100,8 @@ func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 		Destination: pkt.Destination,
 		Payload:     pkt.Payload,
 		Sequence:    pkt.Sequence,
+		ID:          pkt.ID,
+		TTL:         pkt.TTL,
 		Timestamp:   time.Now(),
 	}
 
@@ -136,6 +145,8 @@ func (u *UDPTransport) readLoop() {
 			Destination: msg.Destination,
 			Payload:     msg.Payload,
 			Sequence:    msg.Sequence,
+			ID:          msg.ID,
+			TTL:         msg.TTL,
 		}
 
 		u.recvChan <- &udpReceived{

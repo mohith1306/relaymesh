@@ -16,6 +16,7 @@ type Discovery struct {
 	nodeID      node.NodeID
 	address     string
 	port        uint16
+	dataPort    uint16
 	conn        *net.UDPConn
 	peers       *PeerList
 	logger      *slog.Logger
@@ -25,25 +26,30 @@ type Discovery struct {
 	knownPorts  []uint16
 	mu          sync.RWMutex
 	stopCh      chan struct{}
+	onPeer      func(*Peer)
+	onPeerLost  func(node.NodeID)
 }
 
 type DiscoveryConfig struct {
 	NodeID      node.NodeID
 	Address     string
 	Port        uint16
+	DataPort    uint16
 	Interval    time.Duration
 	PeerTimeout time.Duration
 	KnownPorts  []uint16
 }
 
 type HeartbeatMessage struct {
-	Type         string       `json:"type"`
-	NodeID       node.NodeID  `json:"node_id"`
-	Address      string       `json:"address"`
-	Port         uint16       `json:"port"`
-	Sequence     uint64       `json:"sequence"`
-	Capabilities []Capability `json:"capabilities"`
-	Timestamp    time.Time    `json:"timestamp"`
+	Type         string        `json:"type"`
+	NodeID       node.NodeID   `json:"node_id"`
+	Address      string        `json:"address"`
+	Port         uint16        `json:"port"`
+	DataPort     uint16        `json:"data_port"`
+	Sequence     uint64        `json:"sequence"`
+	Capabilities []Capability  `json:"capabilities"`
+	KnownPeers   []node.NodeID `json:"known_peers"`
+	Timestamp    time.Time     `json:"timestamp"`
 }
 
 const MaxPacketSize = 4096
@@ -53,6 +59,7 @@ func New(config DiscoveryConfig, logger *slog.Logger) *Discovery {
 		nodeID:      config.NodeID,
 		address:     config.Address,
 		port:        config.Port,
+		dataPort:    config.DataPort,
 		peers:       NewPeerList(),
 		logger:      logger,
 		interval:    config.Interval,
@@ -60,6 +67,20 @@ func New(config DiscoveryConfig, logger *slog.Logger) *Discovery {
 		knownPorts:  config.KnownPorts,
 		stopCh:      make(chan struct{}),
 	}
+}
+
+// OnPeer registers a callback invoked when a new peer is discovered.
+func (d *Discovery) OnPeer(cb func(*Peer)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.onPeer = cb
+}
+
+// OnPeerLost registers a callback invoked when a peer times out.
+func (d *Discovery) OnPeerLost(cb func(node.NodeID)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.onPeerLost = cb
 }
 
 func (d *Discovery) Start(ctx context.Context) error {
@@ -133,18 +154,32 @@ func (d *Discovery) handleHeartbeat(msg HeartbeatMessage) {
 
 	peer, exists := d.peers.Get(msg.NodeID)
 	if !exists {
-		peer = NewPeer(msg.NodeID, msg.Address, msg.Port)
+		dataPort := msg.DataPort
+		if dataPort == 0 {
+			dataPort = msg.Port
+		}
+		peer = NewPeerWithData(msg.NodeID, msg.Address, msg.Port, dataPort)
 		d.peers.Add(peer)
 		d.logger.Info("discovered peer",
 			"peer_id", msg.NodeID,
 			"address", msg.Address,
 			"port", msg.Port,
+			"data_port", dataPort,
 		)
+		if d.onPeer != nil {
+			cb := d.onPeer
+			go cb(peer)
+		}
 	}
 
 	peer.Update(PeerMetrics{
-		Sequence: msg.Sequence,
+		Sequence:   msg.Sequence,
+		DataPort:   msg.DataPort,
+		KnownPeers: msg.KnownPeers,
 	})
+	if msg.DataPort != 0 {
+		peer.DataPort = msg.DataPort
+	}
 }
 
 func (d *Discovery) sendLoop(ctx context.Context) {
@@ -161,6 +196,10 @@ func (d *Discovery) sendLoop(ctx context.Context) {
 			d.mu.Lock()
 			d.sequence++
 			seq := d.sequence
+			known := make([]node.NodeID, 0, len(d.peers.peers))
+			for id := range d.peers.peers {
+				known = append(known, id)
+			}
 			d.mu.Unlock()
 
 			msg := HeartbeatMessage{
@@ -168,8 +207,10 @@ func (d *Discovery) sendLoop(ctx context.Context) {
 				NodeID:       d.nodeID,
 				Address:      d.address,
 				Port:         d.port,
+				DataPort:     d.dataPort,
 				Sequence:     seq,
 				Capabilities: []Capability{CapabilityRelay, CapabilityRelayMesh},
+				KnownPeers:   known,
 				Timestamp:    time.Now(),
 			}
 
@@ -205,13 +246,22 @@ func (d *Discovery) cleanupLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			d.mu.Lock()
+			var lost []node.NodeID
+			var lostCb func(node.NodeID)
 			for _, peer := range d.peers.List() {
 				if !peer.IsAlive(d.peerTimeout) {
 					d.peers.Remove(peer.ID)
+					lost = append(lost, peer.ID)
 					d.logger.Info("peer removed (timeout)", "peer_id", peer.ID)
 				}
 			}
+			lostCb = d.onPeerLost
 			d.mu.Unlock()
+			if lostCb != nil {
+				for _, id := range lost {
+					go lostCb(id)
+				}
+			}
 		}
 	}
 }
@@ -220,6 +270,28 @@ func (d *Discovery) Peers() []*Peer {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.peers.List()
+}
+
+// Snapshot returns deep copies of known peers safe for use without holding the lock.
+func (d *Discovery) Snapshot() []*Peer {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	out := make([]*Peer, 0, d.peers.Count())
+	for _, p := range d.peers.List() {
+		cp := *p
+		if p.KnownPeers != nil {
+			kp := make([]node.NodeID, len(p.KnownPeers))
+			copy(kp, p.KnownPeers)
+			cp.KnownPeers = kp
+		}
+		if p.Capabilities != nil {
+			caps := make([]Capability, len(p.Capabilities))
+			copy(caps, p.Capabilities)
+			cp.Capabilities = caps
+		}
+		out = append(out, &cp)
+	}
+	return out
 }
 
 func (d *Discovery) PeerCount() int {

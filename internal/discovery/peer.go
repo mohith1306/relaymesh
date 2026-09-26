@@ -19,19 +19,26 @@ type Peer struct {
 	ID           node.NodeID
 	Address      string
 	Port         uint16
+	DataPort     uint16
 	Latency      time.Duration
 	Bandwidth    float64
 	PacketLoss   float64
 	LastSeen     time.Time
 	Capabilities []Capability
 	Sequence     uint64
+	KnownPeers   []node.NodeID
 }
 
 func NewPeer(id node.NodeID, address string, port uint16) *Peer {
+	return NewPeerWithData(id, address, port, 0)
+}
+
+func NewPeerWithData(id node.NodeID, address string, port uint16, dataPort uint16) *Peer {
 	return &Peer{
 		ID:           id,
 		Address:      address,
 		Port:         port,
+		DataPort:     dataPort,
 		LastSeen:     time.Now(),
 		Capabilities: []Capability{CapabilityRelay, CapabilityRelayMesh},
 	}
@@ -47,10 +54,26 @@ func (p *Peer) Update(metrics PeerMetrics) {
 	p.PacketLoss = metrics.PacketLoss
 	p.LastSeen = time.Now()
 	p.Sequence = metrics.Sequence
+	if metrics.DataPort != 0 {
+		p.DataPort = metrics.DataPort
+	}
+	if metrics.KnownPeers != nil {
+		p.KnownPeers = metrics.KnownPeers
+	}
 }
 
 func (p *Peer) AddressString() string {
 	return fmt.Sprintf("%s:%d", p.Address, p.Port)
+}
+
+// DataAddress returns the address:port for the mesh data plane.
+// Falls back to the discovery port if no data port was advertised.
+func (p *Peer) DataAddress() string {
+	port := p.DataPort
+	if port == 0 {
+		port = p.Port
+	}
+	return fmt.Sprintf("%s:%d", p.Address, port)
 }
 
 type PeerMetrics struct {
@@ -58,6 +81,8 @@ type PeerMetrics struct {
 	Bandwidth  float64
 	PacketLoss float64
 	Sequence   uint64
+	DataPort   uint16
+	KnownPeers []node.NodeID
 }
 
 type PeerList struct {
