@@ -7,28 +7,34 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/relaymesh/relaymesh/internal/ai"
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
+	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
-	"github.com/relaymesh/relaymesh/internal/routing"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"github.com/relaymesh/relaymesh/web"
 )
 
-func main() {
-	configPath := flag.String("config", "", "Path to config file")
+func main() {	configPath := flag.String("config", "", "Path to config file")
 	nodeID := flag.String("node-id", "", "Node ID (overrides config)")
-	port := flag.Int("port", 0, "Port number (overrides config)")
+	port := flag.Int("port", 0, "Discovery port (overrides config)")
+	dataPort := flag.Int("data-port", 0, "Mesh data port (default: discovery port + 10000)")
 	addr := flag.String("address", "", "Listen address (overrides config)")
 	logLevel := flag.String("log-level", "", "Log level (debug, info, warn, error)")
 	generateConfig := flag.Bool("generate-config", false, "Generate default config file")
 	dashboardAddr := flag.String("dashboard", "", "Dashboard address (e.g., :8080 or 0.0.0.0:8080)")
 	webNodeAddr := flag.String("web-node", "", "Web node server address (e.g., :8082)")
 	aiAddr := flag.String("ai", "", "AI service address (e.g., localhost:50051)")
+	sendTo := flag.String("send-to", "", "Phase 1 test: destination node ID to send messages to")
+	sendMsg := flag.String("send-msg", "hello-mesh", "Phase 1 test: message payload to send")
+	sendInterval := flag.Duration("send-interval", 5*time.Second, "Phase 1 test: interval between test messages")
+	knownPorts := flag.String("known-ports", "9001,9002,9003,9004,9005", "Comma-separated discovery ports to probe for peers")
 	flag.Parse()
 
 	if *generateConfig {
@@ -83,6 +89,17 @@ func main() {
 		nodeConfig.Address = localIP
 	}
 
+	dPort := uint16(*dataPort)
+	if dPort == 0 {
+		dPort = nodeConfig.Port + 10000
+	}
+
+	knownDiscoveryPorts, err := parsePortList(*knownPorts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid --known-ports: %v\n", err)
+		os.Exit(1)
+	}
+
 	mgr := node.NewManager(logger)
 	n, err := mgr.CreateNode(nodeConfig)
 	if err != nil {
@@ -105,22 +122,23 @@ func main() {
 		cancel()
 	}()
 
-	discConfig := discovery.DiscoveryConfig{
-		NodeID:      nodeConfig.ID,
-		Address:     localIP,
-		Port:        nodeConfig.Port,
-		Interval:    nodeConfig.HeartbeatInterval,
-		PeerTimeout: nodeConfig.PeerTimeout,
-		KnownPorts:  []uint16{9001, 9002, 9003, 9004, 9005},
-	}
-
-	disc := discovery.New(discConfig, logger.With("component", "discovery"))
-	if err := disc.Start(ctx); err != nil {
-		logger.Error("failed to start discovery", "error", err)
+	// Phase 1 v1: single wired mesh data plane.
+	// Discovery -> Router -> Forwarder -> Transport, all connected.
+	meshNode := mesh.New(mesh.Config{
+		NodeID:              nodeConfig.ID,
+		Address:             localIP,
+		DiscoveryPort:       nodeConfig.Port,
+		DataPort:            dPort,
+		KnownDiscoveryPorts: knownDiscoveryPorts,
+		HeartbeatInterval:   nodeConfig.HeartbeatInterval,
+		PeerTimeout:         nodeConfig.PeerTimeout,
+	}, logger.With("component", "mesh"))
+	if err := meshNode.Start(ctx); err != nil {
+		logger.Error("failed to start mesh node", "error", err)
 		os.Exit(1)
 	}
 
-	router := routing.New(nodeConfig.ID, logger.With("component", "routing"))
+	router := meshNode.Router()
 	collector := telemetry.NewCollector(nodeConfig.ID)
 
 	var aiRouter *ai.AIRouter
@@ -147,10 +165,10 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				peers := disc.Peers()
-				peerIDs := make([]string, len(peers))
-				for i, p := range peers {
-					peerIDs[i] = string(p.ID)
+				peers := meshNode.Discovery().Snapshot()
+				peerIDs := make([]string, 0, len(peers))
+				for _, p := range peers {
+					peerIDs = append(peerIDs, string(p.ID))
 					if dashboard.GetNode(p.ID) == nil {
 						dashboard.RegisterNode(p.ID, p.Address, p.Port, nil, nil)
 					}
@@ -160,6 +178,65 @@ func main() {
 			}
 		}
 	}()
+
+	// Log packets delivered to this node and report mesh stats.
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case d := <-meshNode.Delivered():
+				logger.Info("mesh packet delivered",
+					"source", d.Source,
+					"payload", string(d.Payload),
+					"seq", d.Sequence,
+					"packet_id", d.ID,
+				)
+			}
+		}
+	}()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				st := meshNode.Stats()
+				logger.Info("mesh stats",
+					"peers", st.PeerCount,
+					"routes", st.Routes,
+					"sent", st.Sent,
+					"forwarded", st.Forwarded,
+					"delivered", st.Delivered,
+					"dropped", st.Dropped,
+				)
+			}
+		}
+	}()
+
+	// Optional Phase 1 probe: periodically send a test message to a peer.
+	if *sendTo != "" {
+		target := node.NodeID(*sendTo)
+		go func() {
+			ticker := time.NewTicker(*sendInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					msg := fmt.Sprintf("%s seq=%d t=%s", *sendMsg, time.Now().Unix(), nodeConfig.ID)
+					if err := meshNode.Send(target, []byte(msg)); err != nil {
+						logger.Warn("mesh send failed", "dest", target, "error", err)
+					} else {
+						logger.Info("mesh send ok", "dest", target)
+					}
+				}
+			}
+		}()
+	}
 
 	if *dashboardAddr != "" {
 		dashAddr := *dashboardAddr
@@ -202,14 +279,34 @@ func main() {
 		"node_id", n.ID(),
 		"state", n.State(),
 		"ip", localIP,
-		"port", nodeConfig.Port,
+		"discovery_port", nodeConfig.Port,
+		"data_port", dPort,
 	)
 	<-ctx.Done()
 
-	disc.Stop()
+	_ = meshNode.Stop()
 	if err := n.Stop(); err != nil {
 		logger.Error("error stopping node", "error", err)
 	}
 
 	logger.Info("relaymesh shut down")
+}
+
+func parsePortList(s string) ([]uint16, error) {
+	var ports []uint16
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 1 || n > 65535 {
+			return nil, fmt.Errorf("invalid port %q", part)
+		}
+		ports = append(ports, uint16(n))
+	}
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("no ports specified")
+	}
+	return ports, nil
 }

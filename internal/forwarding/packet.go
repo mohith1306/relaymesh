@@ -8,6 +8,8 @@ import (
 
 type PacketID string
 
+const DefaultTTL uint32 = 64
+
 type Packet struct {
 	ID          PacketID
 	Source      node.NodeID
