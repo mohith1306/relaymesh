@@ -174,6 +174,8 @@ func (m *MeshNode) Send(dest node.NodeID, payload []byte) error {
 	seq := m.seq.Add(1)
 	pkt := forwarding.NewPacket(m.config.NodeID, dest, payload, forwarding.DefaultTTL)
 	pkt.Sequence = seq
+	// Path starts empty; Forwarder appends each handling node,
+	// beginning with the originator, so HasVisited never matches self here.
 	if err := m.forwarder.Forward(pkt, nextHop); err != nil {
 		return fmt.Errorf("forward to %s via %s: %w", dest, nextHop, err)
 	}
@@ -232,6 +234,9 @@ func (m *MeshNode) sync() {
 		}
 	}
 
+	// Drop learned links nobody has re-advertised: the path behind
+	// them is gone, so routes must be recomputed without them.
+	m.router.PruneStaleLinks(m.config.PeerTimeout)
 	m.syncForwardingTable()
 }
 

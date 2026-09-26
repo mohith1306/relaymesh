@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v7.36.1
-// source: api/proto/relaymesh.proto
+// source: relaymesh.proto
 
 package proto
 
@@ -34,7 +34,7 @@ type PeerAdvertisement struct {
 
 func (x *PeerAdvertisement) Reset() {
 	*x = PeerAdvertisement{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[0]
+	mi := &file_relaymesh_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *PeerAdvertisement) String() string {
 func (*PeerAdvertisement) ProtoMessage() {}
 
 func (x *PeerAdvertisement) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[0]
+	mi := &file_relaymesh_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *PeerAdvertisement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerAdvertisement.ProtoReflect.Descriptor instead.
 func (*PeerAdvertisement) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{0}
+	return file_relaymesh_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *PeerAdvertisement) GetNodeId() string {
@@ -105,13 +105,18 @@ type RelayPacket struct {
 	Ttl           uint32                 `protobuf:"varint,4,opt,name=ttl,proto3" json:"ttl,omitempty"`
 	Payload       []byte                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
 	Timestamp     int64                  `protobuf:"varint,6,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Version       uint32                 `protobuf:"varint,7,opt,name=version,proto3" json:"version,omitempty"`
+	PacketId      string                 `protobuf:"bytes,8,opt,name=packet_id,json=packetId,proto3" json:"packet_id,omitempty"`
+	HopCount      uint32                 `protobuf:"varint,9,opt,name=hop_count,json=hopCount,proto3" json:"hop_count,omitempty"`
+	Path          []string               `protobuf:"bytes,10,rep,name=path,proto3" json:"path,omitempty"`
+	Priority      uint32                 `protobuf:"varint,11,opt,name=priority,proto3" json:"priority,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RelayPacket) Reset() {
 	*x = RelayPacket{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[1]
+	mi := &file_relaymesh_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -123,7 +128,7 @@ func (x *RelayPacket) String() string {
 func (*RelayPacket) ProtoMessage() {}
 
 func (x *RelayPacket) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[1]
+	mi := &file_relaymesh_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -136,7 +141,7 @@ func (x *RelayPacket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RelayPacket.ProtoReflect.Descriptor instead.
 func (*RelayPacket) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{1}
+	return file_relaymesh_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *RelayPacket) GetSource() string {
@@ -181,6 +186,41 @@ func (x *RelayPacket) GetTimestamp() int64 {
 	return 0
 }
 
+func (x *RelayPacket) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *RelayPacket) GetPacketId() string {
+	if x != nil {
+		return x.PacketId
+	}
+	return ""
+}
+
+func (x *RelayPacket) GetHopCount() uint32 {
+	if x != nil {
+		return x.HopCount
+	}
+	return 0
+}
+
+func (x *RelayPacket) GetPath() []string {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
+func (x *RelayPacket) GetPriority() uint32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
 type RoutingUpdate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
@@ -192,7 +232,7 @@ type RoutingUpdate struct {
 
 func (x *RoutingUpdate) Reset() {
 	*x = RoutingUpdate{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[2]
+	mi := &file_relaymesh_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -204,7 +244,7 @@ func (x *RoutingUpdate) String() string {
 func (*RoutingUpdate) ProtoMessage() {}
 
 func (x *RoutingUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[2]
+	mi := &file_relaymesh_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -217,7 +257,7 @@ func (x *RoutingUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoutingUpdate.ProtoReflect.Descriptor instead.
 func (*RoutingUpdate) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{2}
+	return file_relaymesh_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RoutingUpdate) GetSource() string {
@@ -253,7 +293,7 @@ type NodeRouteEntry struct {
 
 func (x *NodeRouteEntry) Reset() {
 	*x = NodeRouteEntry{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[3]
+	mi := &file_relaymesh_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -265,7 +305,7 @@ func (x *NodeRouteEntry) String() string {
 func (*NodeRouteEntry) ProtoMessage() {}
 
 func (x *NodeRouteEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[3]
+	mi := &file_relaymesh_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -278,7 +318,7 @@ func (x *NodeRouteEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeRouteEntry.ProtoReflect.Descriptor instead.
 func (*NodeRouteEntry) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{3}
+	return file_relaymesh_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *NodeRouteEntry) GetDestination() string {
@@ -319,7 +359,7 @@ type PeerList struct {
 
 func (x *PeerList) Reset() {
 	*x = PeerList{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[4]
+	mi := &file_relaymesh_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -331,7 +371,7 @@ func (x *PeerList) String() string {
 func (*PeerList) ProtoMessage() {}
 
 func (x *PeerList) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[4]
+	mi := &file_relaymesh_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -344,7 +384,7 @@ func (x *PeerList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerList.ProtoReflect.Descriptor instead.
 func (*PeerList) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{4}
+	return file_relaymesh_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PeerList) GetPeers() []*PeerAdvertisement {
@@ -372,7 +412,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[5]
+	mi := &file_relaymesh_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +424,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[5]
+	mi := &file_relaymesh_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +437,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{5}
+	return file_relaymesh_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Ack) GetSuccess() bool {
@@ -433,7 +473,7 @@ type RouteRequest struct {
 
 func (x *RouteRequest) Reset() {
 	*x = RouteRequest{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[6]
+	mi := &file_relaymesh_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +485,7 @@ func (x *RouteRequest) String() string {
 func (*RouteRequest) ProtoMessage() {}
 
 func (x *RouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[6]
+	mi := &file_relaymesh_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +498,7 @@ func (x *RouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteRequest.ProtoReflect.Descriptor instead.
 func (*RouteRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{6}
+	return file_relaymesh_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RouteRequest) GetSource() string {
@@ -501,7 +541,7 @@ type RouteResponse struct {
 
 func (x *RouteResponse) Reset() {
 	*x = RouteResponse{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[7]
+	mi := &file_relaymesh_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -513,7 +553,7 @@ func (x *RouteResponse) String() string {
 func (*RouteResponse) ProtoMessage() {}
 
 func (x *RouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[7]
+	mi := &file_relaymesh_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -526,7 +566,7 @@ func (x *RouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteResponse.ProtoReflect.Descriptor instead.
 func (*RouteResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{7}
+	return file_relaymesh_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RouteResponse) GetFound() bool {
@@ -568,7 +608,7 @@ type RouteTable struct {
 
 func (x *RouteTable) Reset() {
 	*x = RouteTable{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[8]
+	mi := &file_relaymesh_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -580,7 +620,7 @@ func (x *RouteTable) String() string {
 func (*RouteTable) ProtoMessage() {}
 
 func (x *RouteTable) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[8]
+	mi := &file_relaymesh_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -593,7 +633,7 @@ func (x *RouteTable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTable.ProtoReflect.Descriptor instead.
 func (*RouteTable) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{8}
+	return file_relaymesh_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RouteTable) GetNodeId() string {
@@ -630,7 +670,7 @@ type RouteTableEntry struct {
 
 func (x *RouteTableEntry) Reset() {
 	*x = RouteTableEntry{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[9]
+	mi := &file_relaymesh_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +682,7 @@ func (x *RouteTableEntry) String() string {
 func (*RouteTableEntry) ProtoMessage() {}
 
 func (x *RouteTableEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[9]
+	mi := &file_relaymesh_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +695,7 @@ func (x *RouteTableEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTableEntry.ProtoReflect.Descriptor instead.
 func (*RouteTableEntry) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{9}
+	return file_relaymesh_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RouteTableEntry) GetDestination() string {
@@ -705,7 +745,7 @@ type RouteInvalidation struct {
 
 func (x *RouteInvalidation) Reset() {
 	*x = RouteInvalidation{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[10]
+	mi := &file_relaymesh_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -717,7 +757,7 @@ func (x *RouteInvalidation) String() string {
 func (*RouteInvalidation) ProtoMessage() {}
 
 func (x *RouteInvalidation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[10]
+	mi := &file_relaymesh_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -730,7 +770,7 @@ func (x *RouteInvalidation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteInvalidation.ProtoReflect.Descriptor instead.
 func (*RouteInvalidation) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{10}
+	return file_relaymesh_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RouteInvalidation) GetSource() string {
@@ -779,7 +819,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[11]
+	mi := &file_relaymesh_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -791,7 +831,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[11]
+	mi := &file_relaymesh_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -804,7 +844,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{11}
+	return file_relaymesh_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *NetworkMetrics) GetLatency() float64 {
@@ -890,7 +930,7 @@ type PeerMetrics struct {
 
 func (x *PeerMetrics) Reset() {
 	*x = PeerMetrics{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[12]
+	mi := &file_relaymesh_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -902,7 +942,7 @@ func (x *PeerMetrics) String() string {
 func (*PeerMetrics) ProtoMessage() {}
 
 func (x *PeerMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[12]
+	mi := &file_relaymesh_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -915,7 +955,7 @@ func (x *PeerMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerMetrics.ProtoReflect.Descriptor instead.
 func (*PeerMetrics) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{12}
+	return file_relaymesh_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PeerMetrics) GetPeerId() string {
@@ -965,7 +1005,7 @@ type TelemetryReport struct {
 
 func (x *TelemetryReport) Reset() {
 	*x = TelemetryReport{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[13]
+	mi := &file_relaymesh_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1017,7 @@ func (x *TelemetryReport) String() string {
 func (*TelemetryReport) ProtoMessage() {}
 
 func (x *TelemetryReport) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[13]
+	mi := &file_relaymesh_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1030,7 @@ func (x *TelemetryReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryReport.ProtoReflect.Descriptor instead.
 func (*TelemetryReport) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{13}
+	return file_relaymesh_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *TelemetryReport) GetNodeId() string {
@@ -1033,7 +1073,7 @@ type NetworkState struct {
 
 func (x *NetworkState) Reset() {
 	*x = NetworkState{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[14]
+	mi := &file_relaymesh_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1045,7 +1085,7 @@ func (x *NetworkState) String() string {
 func (*NetworkState) ProtoMessage() {}
 
 func (x *NetworkState) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[14]
+	mi := &file_relaymesh_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1058,7 +1098,7 @@ func (x *NetworkState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkState.ProtoReflect.Descriptor instead.
 func (*NetworkState) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{14}
+	return file_relaymesh_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NetworkState) GetNodeId() string {
@@ -1102,7 +1142,7 @@ type PeerState struct {
 
 func (x *PeerState) Reset() {
 	*x = PeerState{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[15]
+	mi := &file_relaymesh_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1114,7 +1154,7 @@ func (x *PeerState) String() string {
 func (*PeerState) ProtoMessage() {}
 
 func (x *PeerState) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[15]
+	mi := &file_relaymesh_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1127,7 +1167,7 @@ func (x *PeerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerState.ProtoReflect.Descriptor instead.
 func (*PeerState) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{15}
+	return file_relaymesh_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PeerState) GetPeerId() string {
@@ -1179,7 +1219,7 @@ type RouteRecommendation struct {
 
 func (x *RouteRecommendation) Reset() {
 	*x = RouteRecommendation{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[16]
+	mi := &file_relaymesh_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1191,7 +1231,7 @@ func (x *RouteRecommendation) String() string {
 func (*RouteRecommendation) ProtoMessage() {}
 
 func (x *RouteRecommendation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[16]
+	mi := &file_relaymesh_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1204,7 +1244,7 @@ func (x *RouteRecommendation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteRecommendation.ProtoReflect.Descriptor instead.
 func (*RouteRecommendation) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{16}
+	return file_relaymesh_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RouteRecommendation) GetSource() string {
@@ -1259,7 +1299,7 @@ type InferenceRequest struct {
 
 func (x *InferenceRequest) Reset() {
 	*x = InferenceRequest{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[17]
+	mi := &file_relaymesh_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1271,7 +1311,7 @@ func (x *InferenceRequest) String() string {
 func (*InferenceRequest) ProtoMessage() {}
 
 func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[17]
+	mi := &file_relaymesh_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1284,7 +1324,7 @@ func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRequest.ProtoReflect.Descriptor instead.
 func (*InferenceRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{17}
+	return file_relaymesh_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *InferenceRequest) GetState() *NetworkState {
@@ -1311,7 +1351,7 @@ type InferenceResponse struct {
 
 func (x *InferenceResponse) Reset() {
 	*x = InferenceResponse{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[18]
+	mi := &file_relaymesh_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1323,7 +1363,7 @@ func (x *InferenceResponse) String() string {
 func (*InferenceResponse) ProtoMessage() {}
 
 func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[18]
+	mi := &file_relaymesh_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1336,7 +1376,7 @@ func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponse.ProtoReflect.Descriptor instead.
 func (*InferenceResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{18}
+	return file_relaymesh_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *InferenceResponse) GetRecommendations() []*RouteRecommendation {
@@ -1365,7 +1405,7 @@ type TrainingFeedback struct {
 
 func (x *TrainingFeedback) Reset() {
 	*x = TrainingFeedback{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[19]
+	mi := &file_relaymesh_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1377,7 +1417,7 @@ func (x *TrainingFeedback) String() string {
 func (*TrainingFeedback) ProtoMessage() {}
 
 func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[19]
+	mi := &file_relaymesh_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1390,7 +1430,7 @@ func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrainingFeedback.ProtoReflect.Descriptor instead.
 func (*TrainingFeedback) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{19}
+	return file_relaymesh_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TrainingFeedback) GetRouteId() string {
@@ -1430,7 +1470,7 @@ type ModelInfoRequest struct {
 
 func (x *ModelInfoRequest) Reset() {
 	*x = ModelInfoRequest{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[20]
+	mi := &file_relaymesh_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1442,7 +1482,7 @@ func (x *ModelInfoRequest) String() string {
 func (*ModelInfoRequest) ProtoMessage() {}
 
 func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[20]
+	mi := &file_relaymesh_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1455,7 +1495,7 @@ func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfoRequest.ProtoReflect.Descriptor instead.
 func (*ModelInfoRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{20}
+	return file_relaymesh_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ModelInfoRequest) GetNodeId() string {
@@ -1478,7 +1518,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_api_proto_relaymesh_proto_msgTypes[21]
+	mi := &file_relaymesh_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1490,7 +1530,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_relaymesh_proto_msgTypes[21]
+	mi := &file_relaymesh_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1503,7 +1543,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_api_proto_relaymesh_proto_rawDescGZIP(), []int{21}
+	return file_relaymesh_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ModelInfo) GetModelName() string {
@@ -1541,24 +1581,30 @@ func (x *ModelInfo) GetIsLoaded() bool {
 	return false
 }
 
-var File_api_proto_relaymesh_proto protoreflect.FileDescriptor
+var File_relaymesh_proto protoreflect.FileDescriptor
 
-const file_api_proto_relaymesh_proto_rawDesc = "" +
+const file_relaymesh_proto_rawDesc = "" +
 	"\n" +
-	"\x19api/proto/relaymesh.proto\x12\trelaymesh\"\x9c\x01\n" +
+	"\x0frelaymesh.proto\x12\trelaymesh\"\x9c\x01\n" +
 	"\x11PeerAdvertisement\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\rR\x04port\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x12\x1c\n" +
-	"\ttimestamp\x18\x05 \x01(\x03R\ttimestamp\"\xad\x01\n" +
+	"\ttimestamp\x18\x05 \x01(\x03R\ttimestamp\"\xb1\x02\n" +
 	"\vRelayPacket\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x1a\n" +
 	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12\x10\n" +
 	"\x03ttl\x18\x04 \x01(\rR\x03ttl\x12\x18\n" +
 	"\apayload\x18\x05 \x01(\fR\apayload\x12\x1c\n" +
-	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\"x\n" +
+	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\x12\x18\n" +
+	"\aversion\x18\a \x01(\rR\aversion\x12\x1b\n" +
+	"\tpacket_id\x18\b \x01(\tR\bpacketId\x12\x1b\n" +
+	"\thop_count\x18\t \x01(\rR\bhopCount\x12\x12\n" +
+	"\x04path\x18\n" +
+	" \x03(\tR\x04path\x12\x1a\n" +
+	"\bpriority\x18\v \x01(\rR\bpriority\"x\n" +
 	"\rRoutingUpdate\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x121\n" +
 	"\x06routes\x18\x02 \x03(\v2\x19.relaymesh.NodeRouteEntryR\x06routes\x12\x1c\n" +
@@ -1683,19 +1729,19 @@ const file_api_proto_relaymesh_proto_rawDesc = "" +
 	"\fGetTelemetry\x12\x17.relaymesh.RouteRequest\x1a\x1a.relaymesh.TelemetryReportB*Z(github.com/relaymesh/relaymesh/api/protob\x06proto3"
 
 var (
-	file_api_proto_relaymesh_proto_rawDescOnce sync.Once
-	file_api_proto_relaymesh_proto_rawDescData []byte
+	file_relaymesh_proto_rawDescOnce sync.Once
+	file_relaymesh_proto_rawDescData []byte
 )
 
-func file_api_proto_relaymesh_proto_rawDescGZIP() []byte {
-	file_api_proto_relaymesh_proto_rawDescOnce.Do(func() {
-		file_api_proto_relaymesh_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_proto_relaymesh_proto_rawDesc), len(file_api_proto_relaymesh_proto_rawDesc)))
+func file_relaymesh_proto_rawDescGZIP() []byte {
+	file_relaymesh_proto_rawDescOnce.Do(func() {
+		file_relaymesh_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_relaymesh_proto_rawDesc), len(file_relaymesh_proto_rawDesc)))
 	})
-	return file_api_proto_relaymesh_proto_rawDescData
+	return file_relaymesh_proto_rawDescData
 }
 
-var file_api_proto_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
-var file_api_proto_relaymesh_proto_goTypes = []any{
+var file_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_relaymesh_proto_goTypes = []any{
 	(*PeerAdvertisement)(nil),   // 0: relaymesh.PeerAdvertisement
 	(*RelayPacket)(nil),         // 1: relaymesh.RelayPacket
 	(*RoutingUpdate)(nil),       // 2: relaymesh.RoutingUpdate
@@ -1719,7 +1765,7 @@ var file_api_proto_relaymesh_proto_goTypes = []any{
 	(*ModelInfoRequest)(nil),    // 20: relaymesh.ModelInfoRequest
 	(*ModelInfo)(nil),           // 21: relaymesh.ModelInfo
 }
-var file_api_proto_relaymesh_proto_depIdxs = []int32{
+var file_relaymesh_proto_depIdxs = []int32{
 	3,  // 0: relaymesh.RoutingUpdate.routes:type_name -> relaymesh.NodeRouteEntry
 	0,  // 1: relaymesh.PeerList.peers:type_name -> relaymesh.PeerAdvertisement
 	9,  // 2: relaymesh.RouteTable.routes:type_name -> relaymesh.RouteTableEntry
@@ -1751,26 +1797,26 @@ var file_api_proto_relaymesh_proto_depIdxs = []int32{
 	0,  // [0:8] is the sub-list for field type_name
 }
 
-func init() { file_api_proto_relaymesh_proto_init() }
-func file_api_proto_relaymesh_proto_init() {
-	if File_api_proto_relaymesh_proto != nil {
+func init() { file_relaymesh_proto_init() }
+func file_relaymesh_proto_init() {
+	if File_relaymesh_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_relaymesh_proto_rawDesc), len(file_api_proto_relaymesh_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relaymesh_proto_rawDesc), len(file_relaymesh_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
-		GoTypes:           file_api_proto_relaymesh_proto_goTypes,
-		DependencyIndexes: file_api_proto_relaymesh_proto_depIdxs,
-		MessageInfos:      file_api_proto_relaymesh_proto_msgTypes,
+		GoTypes:           file_relaymesh_proto_goTypes,
+		DependencyIndexes: file_relaymesh_proto_depIdxs,
+		MessageInfos:      file_relaymesh_proto_msgTypes,
 	}.Build()
-	File_api_proto_relaymesh_proto = out.File
-	file_api_proto_relaymesh_proto_goTypes = nil
-	file_api_proto_relaymesh_proto_depIdxs = nil
+	File_relaymesh_proto = out.File
+	file_relaymesh_proto_goTypes = nil
+	file_relaymesh_proto_depIdxs = nil
 }

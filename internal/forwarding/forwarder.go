@@ -14,6 +14,7 @@ type DeliveredPacket struct {
 	Sequence uint64
 	ID       string
 	From     node.NodeID
+	Path     []node.NodeID
 }
 
 type Forwarder struct {
@@ -66,6 +67,19 @@ func (f *Forwarder) Forward(pkt *Packet, nextHop node.NodeID) error {
 		return nil
 	}
 
+	if pkt.HasVisited(f.nodeID) {
+		f.mu.Lock()
+		f.dropped++
+		f.mu.Unlock()
+		f.logger.Debug("dropping looping packet",
+			"packet_id", pkt.ID,
+			"source", pkt.Source,
+			"destination", pkt.Destination,
+			"path", pkt.Path,
+		)
+		return nil
+	}
+
 	if !pkt.DecrementTTL() {
 		f.mu.Lock()
 		f.dropped++
@@ -93,6 +107,8 @@ func (f *Forwarder) Forward(pkt *Packet, nextHop node.NodeID) error {
 		Sequence:    pkt.Sequence,
 		ID:          string(pkt.ID),
 		TTL:         pkt.TTL,
+		Path:        append(append([]node.NodeID{}, pkt.Path...), f.nodeID),
+		Priority:    pkt.Priority,
 	}
 
 	if err := f.transport.Send(nextHop, transportPkt); err != nil {
@@ -103,6 +119,15 @@ func (f *Forwarder) Forward(pkt *Packet, nextHop node.NodeID) error {
 	f.forwarded++
 	f.mu.Unlock()
 	return nil
+}
+
+func visited(path []node.NodeID, id node.NodeID) bool {
+	for _, n := range path {
+		if n == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
@@ -117,10 +142,12 @@ func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
 		f.delivered++
 		cb := f.onDelivered
 		f.mu.Unlock()
+		fullPath := append(append([]node.NodeID{}, pkt.Path...), f.nodeID)
 		f.logger.Info("packet delivered locally",
 			"source", pkt.Source,
 			"payload_size", len(pkt.Payload),
 			"packet_id", pkt.ID,
+			"path", fullPath,
 		)
 		if cb != nil {
 			cb(DeliveredPacket{
@@ -129,8 +156,21 @@ func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
 				Sequence: pkt.Sequence,
 				ID:       pkt.ID,
 				From:     from,
+				Path:     fullPath,
 			})
 		}
+		return
+	}
+
+	if visited(pkt.Path, f.nodeID) {
+		f.mu.Lock()
+		f.dropped++
+		f.mu.Unlock()
+		f.logger.Debug("dropping looping packet",
+			"packet_id", pkt.ID,
+			"destination", pkt.Destination,
+			"path", pkt.Path,
+		)
 		return
 	}
 
@@ -156,6 +196,8 @@ func (f *Forwarder) HandleReceived(pkt *transport.Packet, from node.NodeID) {
 		Payload:     pkt.Payload,
 		Sequence:    pkt.Sequence,
 		TTL:         ttl,
+		Path:        pkt.Path,
+		Priority:    pkt.Priority,
 	}
 	if forwardPkt.ID == "" {
 		forwardPkt.ID = PacketID(generateID())
