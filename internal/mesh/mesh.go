@@ -10,6 +10,7 @@ import (
 
 	"github.com/relaymesh/relaymesh/internal/discovery"
 	"github.com/relaymesh/relaymesh/internal/forwarding"
+	"github.com/relaymesh/relaymesh/internal/identity"
 	"github.com/relaymesh/relaymesh/internal/node"
 	"github.com/relaymesh/relaymesh/internal/routing"
 	"github.com/relaymesh/relaymesh/internal/transport"
@@ -33,6 +34,12 @@ type Config struct {
 	// PSK, when non-empty, enables HMAC packet authentication on the
 	// data plane. All peers must share the key.
 	PSK []byte
+	// Identity is this node's Ed25519 key; with Encrypt it enables
+	// mutual authentication and per-link encryption (Phase 10).
+	Identity *identity.Identity
+	// Encrypt requires authenticated encryption on every data link;
+	// plaintext frames are dropped. Requires Identity.
+	Encrypt bool
 }
 
 type Stats struct {
@@ -97,6 +104,10 @@ func New(cfg Config, logger *slog.Logger) *MeshNode {
 	if len(cfg.PSK) > 0 {
 		tr.SetPSK(cfg.PSK)
 	}
+	if cfg.Encrypt && cfg.Identity == nil {
+		logger.Error("encrypt requested without identity; running without data-plane encryption")
+	}
+	tr.SetSecure(cfg.Identity, cfg.Encrypt)
 	router := routing.New(cfg.NodeID, logger.With("component", "routing"))
 	fwd := forwarding.New(cfg.NodeID, tr, logger.With("component", "forwarding"))
 
@@ -127,6 +138,7 @@ func New(cfg Config, logger *slog.Logger) *MeshNode {
 	m.discovery.OnPeerLost(func(id node.NodeID) {
 		m.router.RemoveLink(cfg.NodeID, id)
 		m.forwarder.RemoveFromForwardingTable(id)
+		m.transport.DropSession(id)
 		m.syncForwardingTable()
 	})
 
@@ -252,6 +264,16 @@ func (m *MeshNode) Stats() Stats {
 // AuthFailures counts data-plane packets dropped for bad/missing auth tags.
 func (m *MeshNode) AuthFailures() uint64 {
 	return m.transport.AuthFailures()
+}
+
+// SecureEnabled reports whether authenticated encryption is active.
+func (m *MeshNode) SecureEnabled() bool {
+	return m.transport.SecureEnabled()
+}
+
+// SecureStats reports encrypted data-plane counters (Phase 10).
+func (m *MeshNode) SecureStats() transport.SecureStats {
+	return m.transport.SecureStats()
 }
 
 func (m *MeshNode) syncLoop(ctx context.Context) {

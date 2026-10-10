@@ -14,9 +14,10 @@ import (
 
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
+	gw "github.com/relaymesh/relaymesh/internal/gateway"
+	"github.com/relaymesh/relaymesh/internal/identity"
 	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
-	gw "github.com/relaymesh/relaymesh/internal/gateway"
 )
 
 func main() {
@@ -28,6 +29,8 @@ func main() {
 	logLevel := flag.String("log-level", "info", "Log level")
 	knownPorts := flag.String("known-ports", "9001,9002,9003,9004,9005", "Comma-separated discovery ports to probe for peers")
 	psk := flag.String("psk", "", "Preshared key for data-plane packet authentication (all peers must match)")
+	identityPath := flag.String("identity", "", "Path to Ed25519 identity file (created if missing)")
+	encrypt := flag.Bool("encrypt", false, "Require authenticated encryption on the data plane (requires --identity)")
 	flag.Parse()
 
 	level := slog.LevelInfo
@@ -97,6 +100,27 @@ func main() {
 		cancel()
 	}()
 
+	if *encrypt && *identityPath == "" {
+		fmt.Fprintf(os.Stderr, "--encrypt requires --identity\n")
+		os.Exit(1)
+	}
+	var ident *identity.Identity
+	if *identityPath != "" {
+		created := false
+		var err error
+		ident, created, err = identity.LoadOrCreate(*identityPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading identity: %v\n", err)
+			os.Exit(1)
+		}
+		if created {
+			logger.Info("generated new identity", "path", *identityPath,
+				"fingerprint", identity.Fingerprint(ident.PublicKey()))
+		} else {
+			logger.Info("loaded identity", "path", *identityPath,
+				"fingerprint", identity.Fingerprint(ident.PublicKey()))
+		}
+	}
 	gateway := gw.New(mesh.Config{
 		NodeID:              nodeConfig.ID,
 		Address:             localIP,
@@ -106,6 +130,8 @@ func main() {
 		HeartbeatInterval:   nodeConfig.HeartbeatInterval,
 		PeerTimeout:         nodeConfig.PeerTimeout,
 		PSK:                 []byte(*psk),
+		Identity:            ident,
+		Encrypt:             *encrypt,
 	}, logger.With("component", "gateway"))
 	if err := gateway.Start(ctx); err != nil {
 		logger.Error("failed to start gateway", "error", err)

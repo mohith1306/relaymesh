@@ -1065,6 +1065,227 @@ func (x *LinkPong) GetRepliedAtUnixNano() int64 {
 	return 0
 }
 
+// HandshakeInit begins mutual authentication for the encrypted data
+// plane. signature is Ed25519 over the handshake transcript; psk_proof
+// is HMAC-SHA256(psk, transcript) when a network PSK is configured.
+type HandshakeInit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	From          string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	To            string                 `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
+	IdentityPub   []byte                 `protobuf:"bytes,4,opt,name=identity_pub,json=identityPub,proto3" json:"identity_pub,omitempty"`
+	EphemeralPub  []byte                 `protobuf:"bytes,5,opt,name=ephemeral_pub,json=ephemeralPub,proto3" json:"ephemeral_pub,omitempty"`
+	Nonce         []byte                 `protobuf:"bytes,6,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	DataAddr      string                 `protobuf:"bytes,7,opt,name=data_addr,json=dataAddr,proto3" json:"data_addr,omitempty"`
+	SessionId     []byte                 `protobuf:"bytes,8,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Signature     []byte                 `protobuf:"bytes,9,opt,name=signature,proto3" json:"signature,omitempty"`
+	PskProof      []byte                 `protobuf:"bytes,10,opt,name=psk_proof,json=pskProof,proto3" json:"psk_proof,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HandshakeInit) Reset() {
+	*x = HandshakeInit{}
+	mi := &file_relaymesh_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HandshakeInit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HandshakeInit) ProtoMessage() {}
+
+func (x *HandshakeInit) ProtoReflect() protoreflect.Message {
+	mi := &file_relaymesh_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HandshakeInit.ProtoReflect.Descriptor instead.
+func (*HandshakeInit) Descriptor() ([]byte, []int) {
+	return file_relaymesh_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *HandshakeInit) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *HandshakeInit) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *HandshakeInit) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *HandshakeInit) GetIdentityPub() []byte {
+	if x != nil {
+		return x.IdentityPub
+	}
+	return nil
+}
+
+func (x *HandshakeInit) GetEphemeralPub() []byte {
+	if x != nil {
+		return x.EphemeralPub
+	}
+	return nil
+}
+
+func (x *HandshakeInit) GetNonce() []byte {
+	if x != nil {
+		return x.Nonce
+	}
+	return nil
+}
+
+func (x *HandshakeInit) GetDataAddr() string {
+	if x != nil {
+		return x.DataAddr
+	}
+	return ""
+}
+
+func (x *HandshakeInit) GetSessionId() []byte {
+	if x != nil {
+		return x.SessionId
+	}
+	return nil
+}
+
+func (x *HandshakeInit) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *HandshakeInit) GetPskProof() []byte {
+	if x != nil {
+		return x.PskProof
+	}
+	return nil
+}
+
+// HandshakeResp completes the exchange; both sides derive session
+// keys from the X25519 shared secret and the full transcript.
+type HandshakeResp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	From          string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	To            string                 `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
+	IdentityPub   []byte                 `protobuf:"bytes,4,opt,name=identity_pub,json=identityPub,proto3" json:"identity_pub,omitempty"`
+	EphemeralPub  []byte                 `protobuf:"bytes,5,opt,name=ephemeral_pub,json=ephemeralPub,proto3" json:"ephemeral_pub,omitempty"`
+	Nonce         []byte                 `protobuf:"bytes,6,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Signature     []byte                 `protobuf:"bytes,7,opt,name=signature,proto3" json:"signature,omitempty"`
+	PskProof      []byte                 `protobuf:"bytes,8,opt,name=psk_proof,json=pskProof,proto3" json:"psk_proof,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HandshakeResp) Reset() {
+	*x = HandshakeResp{}
+	mi := &file_relaymesh_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HandshakeResp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HandshakeResp) ProtoMessage() {}
+
+func (x *HandshakeResp) ProtoReflect() protoreflect.Message {
+	mi := &file_relaymesh_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HandshakeResp.ProtoReflect.Descriptor instead.
+func (*HandshakeResp) Descriptor() ([]byte, []int) {
+	return file_relaymesh_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *HandshakeResp) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *HandshakeResp) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *HandshakeResp) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *HandshakeResp) GetIdentityPub() []byte {
+	if x != nil {
+		return x.IdentityPub
+	}
+	return nil
+}
+
+func (x *HandshakeResp) GetEphemeralPub() []byte {
+	if x != nil {
+		return x.EphemeralPub
+	}
+	return nil
+}
+
+func (x *HandshakeResp) GetNonce() []byte {
+	if x != nil {
+		return x.Nonce
+	}
+	return nil
+}
+
+func (x *HandshakeResp) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *HandshakeResp) GetPskProof() []byte {
+	if x != nil {
+		return x.PskProof
+	}
+	return nil
+}
+
 type NetworkMetrics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Latency       float64                `protobuf:"fixed64,1,opt,name=latency,proto3" json:"latency,omitempty"`
@@ -1083,7 +1304,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_relaymesh_proto_msgTypes[15]
+	mi := &file_relaymesh_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1095,7 +1316,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[15]
+	mi := &file_relaymesh_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1108,7 +1329,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{15}
+	return file_relaymesh_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *NetworkMetrics) GetLatency() float64 {
@@ -1194,7 +1415,7 @@ type PeerMetrics struct {
 
 func (x *PeerMetrics) Reset() {
 	*x = PeerMetrics{}
-	mi := &file_relaymesh_proto_msgTypes[16]
+	mi := &file_relaymesh_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1206,7 +1427,7 @@ func (x *PeerMetrics) String() string {
 func (*PeerMetrics) ProtoMessage() {}
 
 func (x *PeerMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[16]
+	mi := &file_relaymesh_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1219,7 +1440,7 @@ func (x *PeerMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerMetrics.ProtoReflect.Descriptor instead.
 func (*PeerMetrics) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{16}
+	return file_relaymesh_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PeerMetrics) GetPeerId() string {
@@ -1269,7 +1490,7 @@ type TelemetryReport struct {
 
 func (x *TelemetryReport) Reset() {
 	*x = TelemetryReport{}
-	mi := &file_relaymesh_proto_msgTypes[17]
+	mi := &file_relaymesh_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1281,7 +1502,7 @@ func (x *TelemetryReport) String() string {
 func (*TelemetryReport) ProtoMessage() {}
 
 func (x *TelemetryReport) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[17]
+	mi := &file_relaymesh_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1294,7 +1515,7 @@ func (x *TelemetryReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryReport.ProtoReflect.Descriptor instead.
 func (*TelemetryReport) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{17}
+	return file_relaymesh_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *TelemetryReport) GetNodeId() string {
@@ -1337,7 +1558,7 @@ type NetworkState struct {
 
 func (x *NetworkState) Reset() {
 	*x = NetworkState{}
-	mi := &file_relaymesh_proto_msgTypes[18]
+	mi := &file_relaymesh_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1349,7 +1570,7 @@ func (x *NetworkState) String() string {
 func (*NetworkState) ProtoMessage() {}
 
 func (x *NetworkState) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[18]
+	mi := &file_relaymesh_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1362,7 +1583,7 @@ func (x *NetworkState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkState.ProtoReflect.Descriptor instead.
 func (*NetworkState) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{18}
+	return file_relaymesh_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *NetworkState) GetNodeId() string {
@@ -1406,7 +1627,7 @@ type PeerState struct {
 
 func (x *PeerState) Reset() {
 	*x = PeerState{}
-	mi := &file_relaymesh_proto_msgTypes[19]
+	mi := &file_relaymesh_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1418,7 +1639,7 @@ func (x *PeerState) String() string {
 func (*PeerState) ProtoMessage() {}
 
 func (x *PeerState) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[19]
+	mi := &file_relaymesh_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1431,7 +1652,7 @@ func (x *PeerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerState.ProtoReflect.Descriptor instead.
 func (*PeerState) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{19}
+	return file_relaymesh_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PeerState) GetPeerId() string {
@@ -1483,7 +1704,7 @@ type RouteRecommendation struct {
 
 func (x *RouteRecommendation) Reset() {
 	*x = RouteRecommendation{}
-	mi := &file_relaymesh_proto_msgTypes[20]
+	mi := &file_relaymesh_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1495,7 +1716,7 @@ func (x *RouteRecommendation) String() string {
 func (*RouteRecommendation) ProtoMessage() {}
 
 func (x *RouteRecommendation) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[20]
+	mi := &file_relaymesh_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1508,7 +1729,7 @@ func (x *RouteRecommendation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteRecommendation.ProtoReflect.Descriptor instead.
 func (*RouteRecommendation) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{20}
+	return file_relaymesh_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RouteRecommendation) GetSource() string {
@@ -1563,7 +1784,7 @@ type InferenceRequest struct {
 
 func (x *InferenceRequest) Reset() {
 	*x = InferenceRequest{}
-	mi := &file_relaymesh_proto_msgTypes[21]
+	mi := &file_relaymesh_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +1796,7 @@ func (x *InferenceRequest) String() string {
 func (*InferenceRequest) ProtoMessage() {}
 
 func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[21]
+	mi := &file_relaymesh_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1588,7 +1809,7 @@ func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRequest.ProtoReflect.Descriptor instead.
 func (*InferenceRequest) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{21}
+	return file_relaymesh_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *InferenceRequest) GetState() *NetworkState {
@@ -1615,7 +1836,7 @@ type InferenceResponse struct {
 
 func (x *InferenceResponse) Reset() {
 	*x = InferenceResponse{}
-	mi := &file_relaymesh_proto_msgTypes[22]
+	mi := &file_relaymesh_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1627,7 +1848,7 @@ func (x *InferenceResponse) String() string {
 func (*InferenceResponse) ProtoMessage() {}
 
 func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[22]
+	mi := &file_relaymesh_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1861,7 @@ func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponse.ProtoReflect.Descriptor instead.
 func (*InferenceResponse) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{22}
+	return file_relaymesh_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *InferenceResponse) GetRecommendations() []*RouteRecommendation {
@@ -1669,7 +1890,7 @@ type TrainingFeedback struct {
 
 func (x *TrainingFeedback) Reset() {
 	*x = TrainingFeedback{}
-	mi := &file_relaymesh_proto_msgTypes[23]
+	mi := &file_relaymesh_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1681,7 +1902,7 @@ func (x *TrainingFeedback) String() string {
 func (*TrainingFeedback) ProtoMessage() {}
 
 func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[23]
+	mi := &file_relaymesh_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1694,7 +1915,7 @@ func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrainingFeedback.ProtoReflect.Descriptor instead.
 func (*TrainingFeedback) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{23}
+	return file_relaymesh_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *TrainingFeedback) GetRouteId() string {
@@ -1734,7 +1955,7 @@ type ModelInfoRequest struct {
 
 func (x *ModelInfoRequest) Reset() {
 	*x = ModelInfoRequest{}
-	mi := &file_relaymesh_proto_msgTypes[24]
+	mi := &file_relaymesh_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1746,7 +1967,7 @@ func (x *ModelInfoRequest) String() string {
 func (*ModelInfoRequest) ProtoMessage() {}
 
 func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[24]
+	mi := &file_relaymesh_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1759,7 +1980,7 @@ func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfoRequest.ProtoReflect.Descriptor instead.
 func (*ModelInfoRequest) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{24}
+	return file_relaymesh_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ModelInfoRequest) GetNodeId() string {
@@ -1782,7 +2003,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_relaymesh_proto_msgTypes[25]
+	mi := &file_relaymesh_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1794,7 +2015,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[25]
+	mi := &file_relaymesh_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1807,7 +2028,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{25}
+	return file_relaymesh_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ModelInfo) GetModelName() string {
@@ -1934,7 +2155,29 @@ const file_relaymesh_proto_rawDesc = "" +
 	"\bLinkPong\x12\x19\n" +
 	"\bprobe_id\x18\x01 \x01(\tR\aprobeId\x12)\n" +
 	"\x11sent_at_unix_nano\x18\x02 \x01(\x03R\x0esentAtUnixNano\x12/\n" +
-	"\x14replied_at_unix_nano\x18\x03 \x01(\x03R\x11repliedAtUnixNano\"\xbb\x02\n" +
+	"\x14replied_at_unix_nano\x18\x03 \x01(\x03R\x11repliedAtUnixNano\"\xa2\x02\n" +
+	"\rHandshakeInit\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x12\n" +
+	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x03 \x01(\tR\x02to\x12!\n" +
+	"\fidentity_pub\x18\x04 \x01(\fR\videntityPub\x12#\n" +
+	"\rephemeral_pub\x18\x05 \x01(\fR\fephemeralPub\x12\x14\n" +
+	"\x05nonce\x18\x06 \x01(\fR\x05nonce\x12\x1b\n" +
+	"\tdata_addr\x18\a \x01(\tR\bdataAddr\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\b \x01(\fR\tsessionId\x12\x1c\n" +
+	"\tsignature\x18\t \x01(\fR\tsignature\x12\x1b\n" +
+	"\tpsk_proof\x18\n" +
+	" \x01(\fR\bpskProof\"\xe6\x01\n" +
+	"\rHandshakeResp\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x12\n" +
+	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x03 \x01(\tR\x02to\x12!\n" +
+	"\fidentity_pub\x18\x04 \x01(\fR\videntityPub\x12#\n" +
+	"\rephemeral_pub\x18\x05 \x01(\fR\fephemeralPub\x12\x14\n" +
+	"\x05nonce\x18\x06 \x01(\fR\x05nonce\x12\x1c\n" +
+	"\tsignature\x18\a \x01(\fR\tsignature\x12\x1b\n" +
+	"\tpsk_proof\x18\b \x01(\fR\bpskProof\"\xbb\x02\n" +
 	"\x0eNetworkMetrics\x12\x18\n" +
 	"\alatency\x18\x01 \x01(\x01R\alatency\x12\x1f\n" +
 	"\vpacket_loss\x18\x02 \x01(\x01R\n" +
@@ -2028,7 +2271,7 @@ func file_relaymesh_proto_rawDescGZIP() []byte {
 	return file_relaymesh_proto_rawDescData
 }
 
-var file_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_relaymesh_proto_goTypes = []any{
 	(*PeerAdvertisement)(nil),   // 0: relaymesh.PeerAdvertisement
 	(*RelayPacket)(nil),         // 1: relaymesh.RelayPacket
@@ -2045,43 +2288,45 @@ var file_relaymesh_proto_goTypes = []any{
 	(*EgressResponse)(nil),      // 12: relaymesh.EgressResponse
 	(*LinkProbe)(nil),           // 13: relaymesh.LinkProbe
 	(*LinkPong)(nil),            // 14: relaymesh.LinkPong
-	(*NetworkMetrics)(nil),      // 15: relaymesh.NetworkMetrics
-	(*PeerMetrics)(nil),         // 16: relaymesh.PeerMetrics
-	(*TelemetryReport)(nil),     // 17: relaymesh.TelemetryReport
-	(*NetworkState)(nil),        // 18: relaymesh.NetworkState
-	(*PeerState)(nil),           // 19: relaymesh.PeerState
-	(*RouteRecommendation)(nil), // 20: relaymesh.RouteRecommendation
-	(*InferenceRequest)(nil),    // 21: relaymesh.InferenceRequest
-	(*InferenceResponse)(nil),   // 22: relaymesh.InferenceResponse
-	(*TrainingFeedback)(nil),    // 23: relaymesh.TrainingFeedback
-	(*ModelInfoRequest)(nil),    // 24: relaymesh.ModelInfoRequest
-	(*ModelInfo)(nil),           // 25: relaymesh.ModelInfo
+	(*HandshakeInit)(nil),       // 15: relaymesh.HandshakeInit
+	(*HandshakeResp)(nil),       // 16: relaymesh.HandshakeResp
+	(*NetworkMetrics)(nil),      // 17: relaymesh.NetworkMetrics
+	(*PeerMetrics)(nil),         // 18: relaymesh.PeerMetrics
+	(*TelemetryReport)(nil),     // 19: relaymesh.TelemetryReport
+	(*NetworkState)(nil),        // 20: relaymesh.NetworkState
+	(*PeerState)(nil),           // 21: relaymesh.PeerState
+	(*RouteRecommendation)(nil), // 22: relaymesh.RouteRecommendation
+	(*InferenceRequest)(nil),    // 23: relaymesh.InferenceRequest
+	(*InferenceResponse)(nil),   // 24: relaymesh.InferenceResponse
+	(*TrainingFeedback)(nil),    // 25: relaymesh.TrainingFeedback
+	(*ModelInfoRequest)(nil),    // 26: relaymesh.ModelInfoRequest
+	(*ModelInfo)(nil),           // 27: relaymesh.ModelInfo
 }
 var file_relaymesh_proto_depIdxs = []int32{
 	3,  // 0: relaymesh.RoutingUpdate.routes:type_name -> relaymesh.NodeRouteEntry
 	0,  // 1: relaymesh.PeerList.peers:type_name -> relaymesh.PeerAdvertisement
 	9,  // 2: relaymesh.RouteTable.routes:type_name -> relaymesh.RouteTableEntry
-	15, // 3: relaymesh.TelemetryReport.metrics:type_name -> relaymesh.NetworkMetrics
-	16, // 4: relaymesh.TelemetryReport.peer_metrics:type_name -> relaymesh.PeerMetrics
-	19, // 5: relaymesh.NetworkState.peers:type_name -> relaymesh.PeerState
-	18, // 6: relaymesh.InferenceRequest.state:type_name -> relaymesh.NetworkState
-	20, // 7: relaymesh.InferenceResponse.recommendations:type_name -> relaymesh.RouteRecommendation
+	17, // 3: relaymesh.TelemetryReport.metrics:type_name -> relaymesh.NetworkMetrics
+	18, // 4: relaymesh.TelemetryReport.peer_metrics:type_name -> relaymesh.PeerMetrics
+	21, // 5: relaymesh.NetworkState.peers:type_name -> relaymesh.PeerState
+	20, // 6: relaymesh.InferenceRequest.state:type_name -> relaymesh.NetworkState
+	22, // 7: relaymesh.InferenceResponse.recommendations:type_name -> relaymesh.RouteRecommendation
 	6,  // 8: relaymesh.RoutingService.GetRoute:input_type -> relaymesh.RouteRequest
 	6,  // 9: relaymesh.RoutingService.GetRouteTable:input_type -> relaymesh.RouteRequest
 	9,  // 10: relaymesh.RoutingService.UpdateRoute:input_type -> relaymesh.RouteTableEntry
-	21, // 11: relaymesh.AIService.GetRecommendation:input_type -> relaymesh.InferenceRequest
-	23, // 12: relaymesh.AIService.ReportFeedback:input_type -> relaymesh.TrainingFeedback
-	24, // 13: relaymesh.AIService.GetModelInfo:input_type -> relaymesh.ModelInfoRequest
-	17, // 14: relaymesh.TelemetryService.ReportTelemetry:input_type -> relaymesh.TelemetryReport
+	23, // 11: relaymesh.AIService.GetRecommendation:input_type -> relaymesh.InferenceRequest
+	25, // 12: relaymesh.AIService.ReportFeedback:input_type -> relaymesh.TrainingFeedback
+	26, // 13: relaymesh.AIService.GetModelInfo:input_type -> relaymesh.ModelInfoRequest
+	19, // 14: relaymesh.TelemetryService.ReportTelemetry:input_type -> relaymesh.TelemetryReport
 	6,  // 15: relaymesh.TelemetryService.GetTelemetry:input_type -> relaymesh.RouteRequest
 	7,  // 16: relaymesh.RoutingService.GetRoute:output_type -> relaymesh.RouteResponse
 	8,  // 17: relaymesh.RoutingService.GetRouteTable:output_type -> relaymesh.RouteTable
 	10, // 18: relaymesh.RoutingService.UpdateRoute:output_type -> relaymesh.RouteInvalidation
-	22, // 19: relaymesh.AIService.GetRecommendation:output_type -> relaymesh.InferenceResponse
+	24, // 19: relaymesh.AIService.GetRecommendation:output_type -> relaymesh.InferenceResponse
 	5,  // 20: relaymesh.AIService.ReportFeedback:output_type -> relaymesh.Ack
-	25, // 21: relaymesh.AIService.GetModelInfo:output_type -> relaymesh.ModelInfo
+	27, // 21: relaymesh.AIService.GetModelInfo:output_type -> relaymesh.ModelInfo
 	5,  // 22: relaymesh.TelemetryService.ReportTelemetry:output_type -> relaymesh.Ack
-	17, // 23: relaymesh.TelemetryService.GetTelemetry:output_type -> relaymesh.TelemetryReport
+	19, // 23: relaymesh.TelemetryService.GetTelemetry:output_type -> relaymesh.TelemetryReport
 	16, // [16:24] is the sub-list for method output_type
 	8,  // [8:16] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -2100,7 +2345,7 @@ func file_relaymesh_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relaymesh_proto_rawDesc), len(file_relaymesh_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

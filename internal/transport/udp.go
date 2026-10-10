@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/relaymesh/relaymesh/api/proto"
+	"github.com/relaymesh/relaymesh/internal/identity"
 	"github.com/relaymesh/relaymesh/internal/node"
 )
 
@@ -33,6 +34,24 @@ type UDPTransport struct {
 	// are dropped before reaching the forwarder.
 	psk          []byte
 	authFailures atomic.Uint64
+
+	// Phase 10 secure mode (mutual auth + encryption).
+	ident              *identity.Identity
+	encryptMode        bool
+	listenPort         uint16
+	listenHost         string
+	sessions           map[node.NodeID]*session
+	sidIndex           map[[sidLen]byte]*session
+	flights            map[node.NodeID]*handshakeFlight
+	pins               map[node.NodeID]string
+	attempts           map[node.NodeID]int
+	cooldowns          map[node.NodeID]time.Time
+	handshakeFailures  atomic.Uint64
+	decryptFailures    atomic.Uint64
+	replayRejects      atomic.Uint64
+	plaintextRejects   atomic.Uint64
+	secureRejects      atomic.Uint64
+	identityMismatches atomic.Uint64
 }
 
 // SetPSK enables (non-empty) or disables (empty) packet authentication.
@@ -49,6 +68,17 @@ func (u *UDPTransport) SetPSK(psk []byte) {
 // AuthFailures counts inbound packets dropped for bad/missing auth tags.
 func (u *UDPTransport) AuthFailures() uint64 {
 	return u.authFailures.Load()
+}
+
+// ListenAddr returns the address peers should reply to (advertised
+// listen socket), empty before Listen.
+func (u *UDPTransport) ListenAddr() string {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	if u.listenPort == 0 {
+		return ""
+	}
+	return u.advertisedAddrLocked()
 }
 
 func computeTag(psk, data []byte) []byte {
@@ -81,10 +111,16 @@ type udpReceived struct {
 
 func NewUDP(nodeID node.NodeID) *UDPTransport {
 	return &UDPTransport{
-		nodeID:   nodeID,
-		peers:    make(map[node.NodeID]*net.UDPConn),
-		recvChan: make(chan *udpReceived, 100),
-		localIP:  GetLocalIP(),
+		nodeID:    nodeID,
+		peers:     make(map[node.NodeID]*net.UDPConn),
+		recvChan:  make(chan *udpReceived, 100),
+		localIP:   GetLocalIP(),
+		sessions:  make(map[node.NodeID]*session),
+		sidIndex:  make(map[[sidLen]byte]*session),
+		flights:   make(map[node.NodeID]*handshakeFlight),
+		pins:      make(map[node.NodeID]string),
+		attempts:  make(map[node.NodeID]int),
+		cooldowns: make(map[node.NodeID]time.Time),
 	}
 }
 
@@ -104,36 +140,57 @@ func (u *UDPTransport) Listen(addr string) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
+	if la, ok := u.conn.LocalAddr().(*net.UDPAddr); ok {
+		u.mu.Lock()
+		u.listenPort = uint16(la.Port)
+		if ip := la.IP.String(); ip != "" && ip != "0.0.0.0" && ip != "::" {
+			u.listenHost = ip
+		}
+		u.mu.Unlock()
+	}
+
 	go u.readLoop()
 	return nil
 }
 
 func (u *UDPTransport) Connect(peer node.NodeID, addr string) error {
 	u.mu.Lock()
-	defer u.mu.Unlock()
 
 	if _, exists := u.peers[peer]; exists {
+		u.mu.Unlock()
+		// Session may still be missing (peer restart): kick a retry.
+		u.startHandshake(peer)
 		return nil
 	}
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
+		u.mu.Unlock()
 		return fmt.Errorf("failed to resolve peer address: %w", err)
 	}
 
 	conn, err := net.DialUDP("udp4", nil, udpAddr)
 	if err != nil {
+		u.mu.Unlock()
 		return fmt.Errorf("failed to connect to peer: %w", err)
 	}
 
 	u.peers[peer] = conn
+	u.mu.Unlock()
 
+	u.startHandshake(peer)
 	return nil
 }
 
 func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 	u.mu.RLock()
 	conn, exists := u.peers[peer]
+	secure := u.encryptMode && u.ident != nil
+	var sess *session
+	if secure {
+		sess = u.sessions[peer]
+	}
+	psk := u.psk
 	u.mu.RUnlock()
 
 	if !exists {
@@ -154,9 +211,13 @@ func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 		Priority:    pkt.Priority,
 	}
 
-	u.mu.RLock()
-	psk := u.psk
-	u.mu.RUnlock()
+	if secure && sess == nil {
+		// Kick the handshake and fail this attempt; callers retry and
+		// probes simply do not count as link evidence.
+		u.startHandshake(peer)
+		return fmt.Errorf("secure session with %s not established: %w", peer, errNoSession)
+	}
+
 	if len(psk) > 0 {
 		unsigned, err := proto.Marshal(msg)
 		if err != nil {
@@ -168,6 +229,17 @@ func (u *UDPTransport) Send(peer node.NodeID, pkt *Packet) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal packet: %w", err)
+	}
+
+	if secure {
+		frame, err := sess.seal(data)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt packet: %w", err)
+		}
+		if _, err := conn.Write(frame); err != nil {
+			return fmt.Errorf("failed to send packet: %w", err)
+		}
+		return nil
 	}
 
 	_, err = conn.Write(data)
@@ -189,6 +261,17 @@ func (u *UDPTransport) readLoop() {
 		n, remoteAddr, err := u.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
+		}
+
+		if isSecureFrame(buf[:n]) {
+			u.handleSecureFrame(buf[:n])
+			continue
+		}
+
+		// Encrypted nodes fail closed on plaintext data frames.
+		if u.SecureEnabled() {
+			u.plaintextRejects.Add(1)
+			continue
 		}
 
 		var msg pb.RelayPacket
@@ -262,7 +345,8 @@ func stringsToNodeIDs(strs []string) []node.NodeID {
 	return out
 }
 
-func GetLocalIP() string {	addrs, err := net.InterfaceAddrs()
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "0.0.0.0"
 	}

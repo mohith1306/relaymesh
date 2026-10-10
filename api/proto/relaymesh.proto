@@ -112,6 +112,35 @@ message LinkPong {
     int64 replied_at_unix_nano = 3;
 }
 
+// HandshakeInit begins mutual authentication for the encrypted data
+// plane. signature is Ed25519 over the handshake transcript; psk_proof
+// is HMAC-SHA256(psk, transcript) when a network PSK is configured.
+message HandshakeInit {
+    uint32 version = 1;
+    string from = 2;
+    string to = 3;
+    bytes identity_pub = 4;
+    bytes ephemeral_pub = 5;
+    bytes nonce = 6;
+    string data_addr = 7;
+    bytes session_id = 8;
+    bytes signature = 9;
+    bytes psk_proof = 10;
+}
+
+// HandshakeResp completes the exchange; both sides derive session
+// keys from the X25519 shared secret and the full transcript.
+message HandshakeResp {
+    uint32 version = 1;
+    string from = 2;
+    string to = 3;
+    bytes identity_pub = 4;
+    bytes ephemeral_pub = 5;
+    bytes nonce = 6;
+    bytes signature = 7;
+    bytes psk_proof = 8;
+}
+
 message NetworkMetrics {
     double latency = 1;
     double packet_loss = 2;
