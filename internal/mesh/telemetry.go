@@ -23,7 +23,7 @@ func (m *MeshNode) SyncTelemetry(c *telemetry.MetricsCollector) {
 		if l.HasRTT {
 			rttSum += float64(l.LastRTT.Microseconds()) / 1000.0
 		}
-		c.UpdatePeerMetrics(l.Peer, linkLatencyMs(l), linkLoss(l), DefaultBandwidth)
+		c.UpdatePeerMetrics(l.Peer, linkLatencyMs(l), l.Loss, DefaultBandwidth)
 	}
 
 	if upCount > 0 {

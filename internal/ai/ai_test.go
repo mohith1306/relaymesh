@@ -17,18 +17,28 @@ import (
 
 type mockAIServer struct {
 	pb.UnimplementedAIServiceServer
-	mu    sync.Mutex
-	calls int
-	rec   *pb.RouteRecommendation
-	err   error
+	mu      sync.Mutex
+	calls   int
+	rec     *pb.RouteRecommendation
+	recs    []*pb.RouteRecommendation
+	lastReq *pb.InferenceRequest
+	err     error
 }
 
-func (m *mockAIServer) GetRecommendation(_ context.Context, _ *pb.InferenceRequest) (*pb.InferenceResponse, error) {
+func (m *mockAIServer) GetRecommendation(_ context.Context, req *pb.InferenceRequest) (*pb.InferenceResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls++
+	m.lastReq = req
 	if m.err != nil {
 		return nil, m.err
+	}
+	if len(m.recs) > 0 {
+		idx := m.calls - 1
+		if idx >= len(m.recs) {
+			idx = len(m.recs) - 1
+		}
+		return &pb.InferenceResponse{Recommendations: []*pb.RouteRecommendation{m.recs[idx]}}, nil
 	}
 	return &pb.InferenceResponse{Recommendations: []*pb.RouteRecommendation{m.rec}}, nil
 }
@@ -41,6 +51,12 @@ func (m *mockAIServer) callCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.calls
+}
+
+func (m *mockAIServer) request() *pb.InferenceRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastReq
 }
 
 func startMockAI(t *testing.T, mock *mockAIServer) (addr string, stop func()) {

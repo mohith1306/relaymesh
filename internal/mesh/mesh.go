@@ -82,11 +82,13 @@ type MeshNode struct {
 	linkMu sync.Mutex
 	// manualDown/autoDown track link state; peerStats holds health per
 	// peer; outstanding tracks in-flight probes so send/recv accounting
-	// stays exact even when pongs race probe bookkeeping.
+	// stays exact even when pongs race probe bookkeeping. quality holds
+	// optional telemetry/AI overrides (SetLinkQuality).
 	manualDown  map[node.NodeID]bool
 	autoDown    map[node.NodeID]bool
 	peerStats   map[node.NodeID]*linkState
 	outstanding map[string]*probeFlight
+	quality     map[node.NodeID]qualityOverride
 
 	mu     sync.Mutex
 	closed bool
@@ -122,6 +124,7 @@ func New(cfg Config, logger *slog.Logger) *MeshNode {
 		autoDown:    make(map[node.NodeID]bool),
 		peerStats:   make(map[node.NodeID]*linkState),
 		outstanding: make(map[string]*probeFlight),
+		quality:     make(map[node.NodeID]qualityOverride),
 	}
 	fwd.OnDelivered(m.classify)
 

@@ -193,9 +193,18 @@ message RouteRecommendation {
     int64 timestamp = 6;
 }
 
+// CandidatePath is a loop-free path from source to destination that
+// Go has already enumerated from its topology graph. Go keeps topology
+// knowledge; Python only scores the options it is given.
+message CandidatePath {
+    repeated string path = 1;
+    double base_cost = 2;
+}
+
 message InferenceRequest {
     NetworkState state = 1;
     repeated string candidate_destinations = 2;
+    repeated CandidatePath candidate_paths = 3;
 }
 
 message InferenceResponse {

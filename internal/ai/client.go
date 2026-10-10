@@ -8,6 +8,7 @@ import (
 
 	pb "github.com/relaymesh/relaymesh/api/proto"
 	"github.com/relaymesh/relaymesh/internal/node"
+	"github.com/relaymesh/relaymesh/internal/routing"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -53,7 +54,7 @@ func (c *Client) GetRecommendation(ctx context.Context,
 	source node.NodeID,
 	destination node.NodeID,
 	collectors map[node.NodeID]*telemetry.MetricsCollector,
-	peers []node.NodeID,
+	candidates []routing.CandidatePath,
 ) (*pb.RouteRecommendation, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("nil context")
@@ -69,32 +70,31 @@ func (c *Client) GetRecommendation(ctx context.Context,
 		Timestamp:     time.Now().Unix(),
 	}
 
-	for _, peer := range peers {
-		if peer == source {
-			continue
-		}
-		metrics, exists := collectors[peer]
-		if !exists {
-			continue
-		}
-		m := metrics.GetMetrics()
+	// Per-direct-link health comes from the source's own collector
+	// (probe RTTs/loss), which is what lets the AI see degradation
+	// the loss-blind deterministic graph cannot.
+	for _, pm := range srcCollector.GetAllPeerMetrics() {
 		state.Peers = append(state.Peers, &pb.PeerState{
-			PeerId:    string(peer),
-			Latency:   float32(m.Latency),
-			PacketLoss: float32(m.PacketLoss),
-			Bandwidth: float32(m.Bandwidth),
-			LastSeen:  time.Now().Unix(),
+			PeerId:     string(pm.PeerID),
+			Latency:    float32(pm.Latency),
+			PacketLoss: float32(pm.PacketLoss),
+			Bandwidth:  float32(pm.Bandwidth),
+			LastSeen:   pm.LastSeen.Unix(),
 		})
 	}
 
-	var candidates []string
-	for _, peer := range peers {
-		candidates = append(candidates, string(peer))
-	}
-
+	// Topology stays in Go: send concrete loop-free path options for
+	// this destination; Python only scores the options we hand it.
 	req := &pb.InferenceRequest{
 		State:                 state,
-		CandidateDestinations: candidates,
+		CandidateDestinations: []string{string(destination)},
+	}
+	for _, cand := range candidates {
+		cp := &pb.CandidatePath{BaseCost: cand.Cost}
+		for _, hop := range cand.Path {
+			cp.Path = append(cp.Path, string(hop))
+		}
+		req.CandidatePaths = append(req.CandidatePaths, cp)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

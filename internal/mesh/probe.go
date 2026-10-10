@@ -79,6 +79,47 @@ type LinkInfo struct {
 	Sent    uint64
 	Recv    uint64
 	Unacked int
+	// Loss is the link's reported packet loss: from send/recv counts,
+	// or from a SetLinkQuality override when one is active.
+	Loss float64
+}
+
+// qualityOverride replaces reported link health for telemetry and the
+// AI layer. Forwarding costs keep using real probe measurements, so an
+// override degrades what the control plane believes without touching
+// the data plane — the seam Phase 11's adaptation tests push on.
+type qualityOverride struct {
+	rtt  time.Duration
+	loss float64
+}
+
+// SetLinkQuality overrides the health a link reports: RTT replaces the
+// measured probe RTT for both routing costs and telemetry; loss is
+// reported to telemetry and the AI advisor only — the routing graph
+// stays loss-blind by design, so degradation is a signal only the AI
+// layer can act on (the Phase 11 adaptation seam). Probes keep running
+// against the real link.
+func (m *MeshNode) SetLinkQuality(peer node.NodeID, rtt time.Duration, loss float64) {
+	if loss < 0 {
+		loss = 0
+	}
+	if loss > 1 {
+		loss = 1
+	}
+	m.linkMu.Lock()
+	defer m.linkMu.Unlock()
+	if m.quality == nil {
+		m.quality = make(map[node.NodeID]qualityOverride)
+	}
+	m.quality[peer] = qualityOverride{rtt: rtt, loss: loss}
+	m.logger.Info("link quality override set", "peer", peer, "rtt", rtt, "loss", loss)
+}
+
+// ClearLinkQuality removes a SetLinkQuality override for peer.
+func (m *MeshNode) ClearLinkQuality(peer node.NodeID) {
+	m.linkMu.Lock()
+	defer m.linkMu.Unlock()
+	delete(m.quality, peer)
 }
 
 // SetLinkDown administratively forces a data-plane link down or clears
@@ -122,6 +163,12 @@ func (m *MeshNode) LinkStates() []LinkInfo {
 			info.Recv = st.recv
 			info.Unacked = st.unacked
 		}
+		info.Loss = linkLoss(info)
+		if o, ok := m.quality[p.ID]; ok {
+			info.LastRTT = o.rtt
+			info.HasRTT = true
+			info.Loss = o.loss
+		}
 		_, info.Manual = m.manualDown[p.ID]
 		_, auto := m.autoDown[p.ID]
 		info.Down = info.Manual || auto
@@ -144,11 +191,20 @@ func (m *MeshNode) isDownLocked(peer node.NodeID) bool {
 	return false
 }
 
-// linkLatency returns the measured RTT-based cost for a peer, falling
-// back to the default when no measurement exists yet.
+// linkLatency returns the cost for a peer in the routing graph: a
+// SetLinkQuality RTT override when one is active, otherwise the
+// measured probe RTT, falling back to the default when unmeasured.
+// Loss never appears here — the graph is loss-blind on purpose.
 func (m *MeshNode) linkLatency(peer node.NodeID) float64 {
 	m.linkMu.Lock()
 	defer m.linkMu.Unlock()
+	if o, ok := m.quality[peer]; ok {
+		ms := float64(o.rtt.Microseconds()) / 1000.0
+		if ms < 0.1 {
+			ms = 0.1
+		}
+		return ms
+	}
 	if st, ok := m.peerStats[peer]; ok && st.hasRTT {
 		ms := float64(st.lastRTT.Microseconds()) / 1000.0
 		if ms < 0.1 {

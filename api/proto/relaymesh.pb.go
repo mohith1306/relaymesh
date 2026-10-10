@@ -1774,17 +1774,73 @@ func (x *RouteRecommendation) GetTimestamp() int64 {
 	return 0
 }
 
+// CandidatePath is a loop-free path from source to destination that
+// Go has already enumerated from its topology graph. Go keeps topology
+// knowledge; Python only scores the options it is given.
+type CandidatePath struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          []string               `protobuf:"bytes,1,rep,name=path,proto3" json:"path,omitempty"`
+	BaseCost      float64                `protobuf:"fixed64,2,opt,name=base_cost,json=baseCost,proto3" json:"base_cost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CandidatePath) Reset() {
+	*x = CandidatePath{}
+	mi := &file_relaymesh_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CandidatePath) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CandidatePath) ProtoMessage() {}
+
+func (x *CandidatePath) ProtoReflect() protoreflect.Message {
+	mi := &file_relaymesh_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CandidatePath.ProtoReflect.Descriptor instead.
+func (*CandidatePath) Descriptor() ([]byte, []int) {
+	return file_relaymesh_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *CandidatePath) GetPath() []string {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
+func (x *CandidatePath) GetBaseCost() float64 {
+	if x != nil {
+		return x.BaseCost
+	}
+	return 0
+}
+
 type InferenceRequest struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	State                 *NetworkState          `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
 	CandidateDestinations []string               `protobuf:"bytes,2,rep,name=candidate_destinations,json=candidateDestinations,proto3" json:"candidate_destinations,omitempty"`
+	CandidatePaths        []*CandidatePath       `protobuf:"bytes,3,rep,name=candidate_paths,json=candidatePaths,proto3" json:"candidate_paths,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
 
 func (x *InferenceRequest) Reset() {
 	*x = InferenceRequest{}
-	mi := &file_relaymesh_proto_msgTypes[23]
+	mi := &file_relaymesh_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1796,7 +1852,7 @@ func (x *InferenceRequest) String() string {
 func (*InferenceRequest) ProtoMessage() {}
 
 func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[23]
+	mi := &file_relaymesh_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1809,7 +1865,7 @@ func (x *InferenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRequest.ProtoReflect.Descriptor instead.
 func (*InferenceRequest) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{23}
+	return file_relaymesh_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *InferenceRequest) GetState() *NetworkState {
@@ -1826,6 +1882,13 @@ func (x *InferenceRequest) GetCandidateDestinations() []string {
 	return nil
 }
 
+func (x *InferenceRequest) GetCandidatePaths() []*CandidatePath {
+	if x != nil {
+		return x.CandidatePaths
+	}
+	return nil
+}
+
 type InferenceResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Recommendations []*RouteRecommendation `protobuf:"bytes,1,rep,name=recommendations,proto3" json:"recommendations,omitempty"`
@@ -1836,7 +1899,7 @@ type InferenceResponse struct {
 
 func (x *InferenceResponse) Reset() {
 	*x = InferenceResponse{}
-	mi := &file_relaymesh_proto_msgTypes[24]
+	mi := &file_relaymesh_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1848,7 +1911,7 @@ func (x *InferenceResponse) String() string {
 func (*InferenceResponse) ProtoMessage() {}
 
 func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[24]
+	mi := &file_relaymesh_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1861,7 +1924,7 @@ func (x *InferenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponse.ProtoReflect.Descriptor instead.
 func (*InferenceResponse) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{24}
+	return file_relaymesh_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *InferenceResponse) GetRecommendations() []*RouteRecommendation {
@@ -1890,7 +1953,7 @@ type TrainingFeedback struct {
 
 func (x *TrainingFeedback) Reset() {
 	*x = TrainingFeedback{}
-	mi := &file_relaymesh_proto_msgTypes[25]
+	mi := &file_relaymesh_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1902,7 +1965,7 @@ func (x *TrainingFeedback) String() string {
 func (*TrainingFeedback) ProtoMessage() {}
 
 func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[25]
+	mi := &file_relaymesh_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1915,7 +1978,7 @@ func (x *TrainingFeedback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrainingFeedback.ProtoReflect.Descriptor instead.
 func (*TrainingFeedback) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{25}
+	return file_relaymesh_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *TrainingFeedback) GetRouteId() string {
@@ -1955,7 +2018,7 @@ type ModelInfoRequest struct {
 
 func (x *ModelInfoRequest) Reset() {
 	*x = ModelInfoRequest{}
-	mi := &file_relaymesh_proto_msgTypes[26]
+	mi := &file_relaymesh_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1967,7 +2030,7 @@ func (x *ModelInfoRequest) String() string {
 func (*ModelInfoRequest) ProtoMessage() {}
 
 func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[26]
+	mi := &file_relaymesh_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1980,7 +2043,7 @@ func (x *ModelInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfoRequest.ProtoReflect.Descriptor instead.
 func (*ModelInfoRequest) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{26}
+	return file_relaymesh_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ModelInfoRequest) GetNodeId() string {
@@ -2003,7 +2066,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_relaymesh_proto_msgTypes[27]
+	mi := &file_relaymesh_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2015,7 +2078,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_relaymesh_proto_msgTypes[27]
+	mi := &file_relaymesh_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2028,7 +2091,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_relaymesh_proto_rawDescGZIP(), []int{27}
+	return file_relaymesh_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ModelInfo) GetModelName() string {
@@ -2226,10 +2289,14 @@ const file_relaymesh_proto_rawDesc = "" +
 	"confidence\x18\x04 \x01(\x01R\n" +
 	"confidence\x12\x14\n" +
 	"\x05score\x18\x05 \x01(\x01R\x05score\x12\x1c\n" +
-	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\"x\n" +
+	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\"@\n" +
+	"\rCandidatePath\x12\x12\n" +
+	"\x04path\x18\x01 \x03(\tR\x04path\x12\x1b\n" +
+	"\tbase_cost\x18\x02 \x01(\x01R\bbaseCost\"\xbb\x01\n" +
 	"\x10InferenceRequest\x12-\n" +
 	"\x05state\x18\x01 \x01(\v2\x17.relaymesh.NetworkStateR\x05state\x125\n" +
-	"\x16candidate_destinations\x18\x02 \x03(\tR\x15candidateDestinations\"\x89\x01\n" +
+	"\x16candidate_destinations\x18\x02 \x03(\tR\x15candidateDestinations\x12A\n" +
+	"\x0fcandidate_paths\x18\x03 \x03(\v2\x18.relaymesh.CandidatePathR\x0ecandidatePaths\"\x89\x01\n" +
 	"\x11InferenceResponse\x12H\n" +
 	"\x0frecommendations\x18\x01 \x03(\v2\x1e.relaymesh.RouteRecommendationR\x0frecommendations\x12*\n" +
 	"\x11inference_time_ms\x18\x02 \x01(\x03R\x0finferenceTimeMs\"}\n" +
@@ -2271,7 +2338,7 @@ func file_relaymesh_proto_rawDescGZIP() []byte {
 	return file_relaymesh_proto_rawDescData
 }
 
-var file_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_relaymesh_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_relaymesh_proto_goTypes = []any{
 	(*PeerAdvertisement)(nil),   // 0: relaymesh.PeerAdvertisement
 	(*RelayPacket)(nil),         // 1: relaymesh.RelayPacket
@@ -2296,11 +2363,12 @@ var file_relaymesh_proto_goTypes = []any{
 	(*NetworkState)(nil),        // 20: relaymesh.NetworkState
 	(*PeerState)(nil),           // 21: relaymesh.PeerState
 	(*RouteRecommendation)(nil), // 22: relaymesh.RouteRecommendation
-	(*InferenceRequest)(nil),    // 23: relaymesh.InferenceRequest
-	(*InferenceResponse)(nil),   // 24: relaymesh.InferenceResponse
-	(*TrainingFeedback)(nil),    // 25: relaymesh.TrainingFeedback
-	(*ModelInfoRequest)(nil),    // 26: relaymesh.ModelInfoRequest
-	(*ModelInfo)(nil),           // 27: relaymesh.ModelInfo
+	(*CandidatePath)(nil),       // 23: relaymesh.CandidatePath
+	(*InferenceRequest)(nil),    // 24: relaymesh.InferenceRequest
+	(*InferenceResponse)(nil),   // 25: relaymesh.InferenceResponse
+	(*TrainingFeedback)(nil),    // 26: relaymesh.TrainingFeedback
+	(*ModelInfoRequest)(nil),    // 27: relaymesh.ModelInfoRequest
+	(*ModelInfo)(nil),           // 28: relaymesh.ModelInfo
 }
 var file_relaymesh_proto_depIdxs = []int32{
 	3,  // 0: relaymesh.RoutingUpdate.routes:type_name -> relaymesh.NodeRouteEntry
@@ -2310,28 +2378,29 @@ var file_relaymesh_proto_depIdxs = []int32{
 	18, // 4: relaymesh.TelemetryReport.peer_metrics:type_name -> relaymesh.PeerMetrics
 	21, // 5: relaymesh.NetworkState.peers:type_name -> relaymesh.PeerState
 	20, // 6: relaymesh.InferenceRequest.state:type_name -> relaymesh.NetworkState
-	22, // 7: relaymesh.InferenceResponse.recommendations:type_name -> relaymesh.RouteRecommendation
-	6,  // 8: relaymesh.RoutingService.GetRoute:input_type -> relaymesh.RouteRequest
-	6,  // 9: relaymesh.RoutingService.GetRouteTable:input_type -> relaymesh.RouteRequest
-	9,  // 10: relaymesh.RoutingService.UpdateRoute:input_type -> relaymesh.RouteTableEntry
-	23, // 11: relaymesh.AIService.GetRecommendation:input_type -> relaymesh.InferenceRequest
-	25, // 12: relaymesh.AIService.ReportFeedback:input_type -> relaymesh.TrainingFeedback
-	26, // 13: relaymesh.AIService.GetModelInfo:input_type -> relaymesh.ModelInfoRequest
-	19, // 14: relaymesh.TelemetryService.ReportTelemetry:input_type -> relaymesh.TelemetryReport
-	6,  // 15: relaymesh.TelemetryService.GetTelemetry:input_type -> relaymesh.RouteRequest
-	7,  // 16: relaymesh.RoutingService.GetRoute:output_type -> relaymesh.RouteResponse
-	8,  // 17: relaymesh.RoutingService.GetRouteTable:output_type -> relaymesh.RouteTable
-	10, // 18: relaymesh.RoutingService.UpdateRoute:output_type -> relaymesh.RouteInvalidation
-	24, // 19: relaymesh.AIService.GetRecommendation:output_type -> relaymesh.InferenceResponse
-	5,  // 20: relaymesh.AIService.ReportFeedback:output_type -> relaymesh.Ack
-	27, // 21: relaymesh.AIService.GetModelInfo:output_type -> relaymesh.ModelInfo
-	5,  // 22: relaymesh.TelemetryService.ReportTelemetry:output_type -> relaymesh.Ack
-	19, // 23: relaymesh.TelemetryService.GetTelemetry:output_type -> relaymesh.TelemetryReport
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	23, // 7: relaymesh.InferenceRequest.candidate_paths:type_name -> relaymesh.CandidatePath
+	22, // 8: relaymesh.InferenceResponse.recommendations:type_name -> relaymesh.RouteRecommendation
+	6,  // 9: relaymesh.RoutingService.GetRoute:input_type -> relaymesh.RouteRequest
+	6,  // 10: relaymesh.RoutingService.GetRouteTable:input_type -> relaymesh.RouteRequest
+	9,  // 11: relaymesh.RoutingService.UpdateRoute:input_type -> relaymesh.RouteTableEntry
+	24, // 12: relaymesh.AIService.GetRecommendation:input_type -> relaymesh.InferenceRequest
+	26, // 13: relaymesh.AIService.ReportFeedback:input_type -> relaymesh.TrainingFeedback
+	27, // 14: relaymesh.AIService.GetModelInfo:input_type -> relaymesh.ModelInfoRequest
+	19, // 15: relaymesh.TelemetryService.ReportTelemetry:input_type -> relaymesh.TelemetryReport
+	6,  // 16: relaymesh.TelemetryService.GetTelemetry:input_type -> relaymesh.RouteRequest
+	7,  // 17: relaymesh.RoutingService.GetRoute:output_type -> relaymesh.RouteResponse
+	8,  // 18: relaymesh.RoutingService.GetRouteTable:output_type -> relaymesh.RouteTable
+	10, // 19: relaymesh.RoutingService.UpdateRoute:output_type -> relaymesh.RouteInvalidation
+	25, // 20: relaymesh.AIService.GetRecommendation:output_type -> relaymesh.InferenceResponse
+	5,  // 21: relaymesh.AIService.ReportFeedback:output_type -> relaymesh.Ack
+	28, // 22: relaymesh.AIService.GetModelInfo:output_type -> relaymesh.ModelInfo
+	5,  // 23: relaymesh.TelemetryService.ReportTelemetry:output_type -> relaymesh.Ack
+	19, // 24: relaymesh.TelemetryService.GetTelemetry:output_type -> relaymesh.TelemetryReport
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_relaymesh_proto_init() }
@@ -2345,7 +2414,7 @@ func file_relaymesh_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relaymesh_proto_rawDesc), len(file_relaymesh_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

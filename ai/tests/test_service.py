@@ -54,9 +54,52 @@ def main():
         assert info.model_name == 'relaymesh-rl', info.model_name
         print(f'GetModelInfo OK: {info.model_name} v{info.model_version}')
 
+        test_candidate_path_scoring(stub)
+
         print('ALL AI SERVICE TESTS PASSED')
     finally:
         server.stop(0)
+
+
+def test_candidate_path_scoring(stub):
+    """Candidate paths + live peer loss must steer the recommendation.
+
+    Healthy links: the cheaper Go base_cost path (via node-B) wins.
+    Degraded first hop: loss * 100 outweighs base cost and the model
+    must switch to via node-D — the M15 adaptation signal.
+    """
+    candidates = [
+        relaymesh_pb2.CandidatePath(path=['node-A', 'node-B', 'node-C'], base_cost=12.0),
+        relaymesh_pb2.CandidatePath(path=['node-A', 'node-D', 'node-C'], base_cost=15.0),
+    ]
+
+    def build(b_loss, b_rtt=1.0):
+        return relaymesh_pb2.InferenceRequest(
+            state=relaymesh_pb2.NetworkState(
+                node_id='node-A',
+                feature_vector=[10.0, 0.0, 100.0, 0, 0, 2, 2, 12, 0, 0],
+                peers=[
+                    relaymesh_pb2.PeerState(
+                        peer_id='node-B', latency=b_rtt,
+                        packet_loss=b_loss, bandwidth=100.0),
+                    relaymesh_pb2.PeerState(
+                        peer_id='node-D', latency=5.0,
+                        packet_loss=0.0, bandwidth=100.0),
+                ],
+            ),
+            candidate_destinations=['node-C'],
+            candidate_paths=candidates,
+        )
+
+    healthy = stub.GetRecommendation(build(b_loss=0.0), timeout=5).recommendations[0]
+    assert list(healthy.path) == ['node-A', 'node-B', 'node-C'], list(healthy.path)
+    assert healthy.confidence >= 0.3, healthy.confidence
+    print(f'candidate scoring healthy -> {list(healthy.path)} conf={healthy.confidence:.2f}')
+
+    degraded = stub.GetRecommendation(build(b_loss=0.4), timeout=5).recommendations[0]
+    assert list(degraded.path) == ['node-A', 'node-D', 'node-C'], list(degraded.path)
+    assert degraded.confidence >= 0.3, degraded.confidence
+    print(f'candidate scoring degraded -> {list(degraded.path)} conf={degraded.confidence:.2f}')
 
 
 if __name__ == '__main__':

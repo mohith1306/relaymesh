@@ -14,7 +14,11 @@ from .feature_processor import FeatureProcessor
 
 class RouteInference:
     """RL-based route inference engine."""
-    
+
+    # Loss dominates path scoring: a 0.4 loss link must outweigh a
+    # few ms of base-cost difference so adaptation actually switches.
+    LOSS_WEIGHT = 100.0
+
     def __init__(self):
         self.feature_processor = FeatureProcessor()
         self.model = None
@@ -70,8 +74,17 @@ class RouteInference:
         cost_bucket = int(cost // 10) if cost != float('inf') else 999
         return f"{n_neighbors},{n_active},{n_paths},{cost_bucket}"
     
-    def get_recommendation(self, state: Dict, candidates: List[str]) -> Dict:
-        """Get route recommendation for given candidates."""
+    def get_recommendation(self, state: Dict, candidates: List[str],
+                           candidate_paths: Optional[List[Dict]] = None) -> Dict:
+        """Get route recommendation for given candidates.
+
+        When Go supplies candidate_paths (loop-free topology paths it
+        enumerated), score those — topology knowledge stays in Go and
+        the model only ranks the options it is handed. Legacy callers
+        without candidate paths use the destination-candidate flow.
+        """
+        if candidate_paths:
+            return self._path_recommendation(state, candidate_paths)
         if not self.is_loaded:
             return self._heuristic_recommendation(state, candidates)
         if self.model_kind == 'qtable':
@@ -109,6 +122,59 @@ class RouteInference:
             'score': float(q_values[best_idx]),
         }
     
+    def _path_recommendation(self, state: Dict, candidate_paths: List[Dict]) -> Dict:
+        """Score Go-enumerated candidate paths with live per-link health.
+
+        score = -(base_cost + first_hop_rtt + loss * LOSS_WEIGHT)
+
+        base_cost comes from Go's loss-blind Dijkstra, the RTT/loss
+        from the source's own probe telemetry — so a degrading link is
+        invisible to deterministic routing but flips this score. A
+        matching Q-table state raises confidence (RL-confirmed).
+        """
+        peers = {p.get('peer_id'): p for p in state.get('peers', [])}
+        source = state.get('node_id', '')
+
+        options = []
+        for cand in candidate_paths or []:
+            path = list(cand.get('path') or [])
+            if len(path) < 2 or path[0] != source:
+                continue
+            base = float(cand.get('base_cost', 0.0) or 0.0)
+            hop_metrics = peers.get(path[1], {}) or {}
+            rtt = float(hop_metrics.get('latency', 0.0) or 0.0)
+            loss = float(hop_metrics.get('packet_loss', 0.0) or 0.0)
+            score = -(base + rtt + loss * self.LOSS_WEIGHT)
+            options.append({
+                'path': path,
+                'destination': path[-1],
+                'score': score,
+            })
+
+        if not options:
+            return {'destination': None, 'path': [], 'confidence': 0.0, 'score': 0.0}
+
+        options.sort(key=lambda o: o['score'], reverse=True)
+        best = options[0]
+
+        if len(options) == 1:
+            confidence = 0.6
+        else:
+            gap = best['score'] - options[1]['score']
+            confidence = 0.6 + min(0.35, gap / 10.0)
+
+        if self.is_loaded and self.model_kind == 'qtable':
+            features = self.feature_processor.process_network_state(state)
+            if self._state_key(features) in self.q_table:
+                confidence = max(confidence, 0.8)
+
+        return {
+            'destination': best['destination'],
+            'path': best['path'],
+            'confidence': float(confidence),
+            'score': float(best['score']),
+        }
+
     def _heuristic_recommendation(self, state: Dict, candidates: List[str]) -> Dict:
         """Fallback heuristic recommendation."""
         if not candidates:
