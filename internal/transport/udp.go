@@ -52,6 +52,12 @@ type UDPTransport struct {
 	plaintextRejects   atomic.Uint64
 	secureRejects      atomic.Uint64
 	identityMismatches atomic.Uint64
+
+	// Phase 14: UDP hole punching.
+	// remoteAddrs tracks the last observed source address per peer so
+	// readLoop can detect an inbound packet from an address we have not
+	// dialed yet (the punch landing) and re-bind the connected socket.
+	remoteAddrs map[node.NodeID]*net.UDPAddr
 }
 
 // SetPSK enables (non-empty) or disables (empty) packet authentication.
@@ -111,16 +117,17 @@ type udpReceived struct {
 
 func NewUDP(nodeID node.NodeID) *UDPTransport {
 	return &UDPTransport{
-		nodeID:    nodeID,
-		peers:     make(map[node.NodeID]*net.UDPConn),
-		recvChan:  make(chan *udpReceived, 100),
-		localIP:   GetLocalIP(),
-		sessions:  make(map[node.NodeID]*session),
-		sidIndex:  make(map[[sidLen]byte]*session),
-		flights:   make(map[node.NodeID]*handshakeFlight),
-		pins:      make(map[node.NodeID]string),
-		attempts:  make(map[node.NodeID]int),
-		cooldowns: make(map[node.NodeID]time.Time),
+		nodeID:      nodeID,
+		peers:       make(map[node.NodeID]*net.UDPConn),
+		recvChan:    make(chan *udpReceived, 100),
+		localIP:     GetLocalIP(),
+		sessions:    make(map[node.NodeID]*session),
+		sidIndex:    make(map[[sidLen]byte]*session),
+		flights:     make(map[node.NodeID]*handshakeFlight),
+		pins:        make(map[node.NodeID]string),
+		attempts:    make(map[node.NodeID]int),
+		cooldowns:   make(map[node.NodeID]time.Time),
+		remoteAddrs: make(map[node.NodeID]*net.UDPAddr),
 	}
 }
 
@@ -295,8 +302,27 @@ func (u *UDPTransport) readLoop() {
 			continue
 		}
 
+		srcID := node.NodeID(msg.Source)
+
+		// Phase 14: track the observed source address for this peer, and
+		// if we have not dialed it yet (the punch landed), re-bind the
+		// connected socket so replies go to the correct public mapping.
+		if remoteAddr != nil {
+			u.mu.Lock()
+			if _, known := u.peers[srcID]; !known {
+				// First packet from an address we did not dial: this is a
+				// hole punch landing. Re-bind so subsequent traffic uses
+				// the observed mapping.
+				if conn, err := net.DialUDP("udp4", nil, remoteAddr); err == nil {
+					u.peers[srcID] = conn
+				}
+			}
+			u.remoteAddrs[srcID] = remoteAddr
+			u.mu.Unlock()
+		}
+
 		pkt := &Packet{
-			Source:      node.NodeID(msg.Source),
+			Source:      srcID,
 			Destination: node.NodeID(msg.Destination),
 			Payload:     msg.Payload,
 			Sequence:    msg.Sequence,
@@ -315,6 +341,26 @@ func (u *UDPTransport) readLoop() {
 	}
 }
 
+// Punch sends a small probe from our listen socket directly to addr.
+// Because it comes from the same local port the peer will later receive
+// data on, it "opens" our NAT's outbound mapping so the peer's reply
+// (and their own simultaneous punch) can land. It is safe to call
+// before Connect; the readLoop will detect the reply and re-bind the
+// connected socket to the observed address.
+func (u *UDPTransport) Punch(addr string) error {
+	if u.conn == nil {
+		return fmt.Errorf("not listening")
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
+	if err != nil {
+		return fmt.Errorf("failed to resolve punch addr: %w", err)
+	}
+	// Payload content is irrelevant; any datagram opens the NAT mapping.
+	_, err = u.conn.WriteToUDP([]byte("punch"), udpAddr)
+	return err
+}
+
+// Close closes the transport and all peer sockets.
 func (u *UDPTransport) Close() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()

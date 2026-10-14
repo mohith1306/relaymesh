@@ -241,6 +241,14 @@ func (m *MeshNode) advisedNextHop(dest node.NodeID) (node.NodeID, bool) {
 // Send transmits payload to dest via the mesh route. An advisor, when
 // set, is consulted first; any failure falls back to deterministic
 // routing, so AI can never break forwarding.
+// Punch sends a hole-punch probe to addr from the mesh's listen socket.
+// It is safe to call before Connect; the transport's readLoop will
+// detect the reply and re-bind the connected socket to the observed
+// public mapping.
+func (m *MeshNode) Punch(addr string) error {
+	return m.transport.Punch(addr)
+}
+
 func (m *MeshNode) Send(dest node.NodeID, payload []byte) error {
 	if dest == m.config.NodeID {
 		return fmt.Errorf("cannot send to self")

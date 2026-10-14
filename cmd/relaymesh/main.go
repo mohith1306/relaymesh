@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -507,6 +508,21 @@ func runSignaling(ctx context.Context, logger *slog.Logger, meshNode *mesh.MeshN
 				meshNode.Discovery().AddCandidate(node.NodeID(peerID), c.IP, c.Port, dport)
 				logger.Info("added remote candidate via signaling",
 					"peer", peerID, "ip", c.IP, "port", c.Port, "data_port", dport)
+
+				// Phase 14: race a hole punch to the candidate's data
+				// port. Because we punch from our listen socket (same
+				// local port the peer will send data to), this opens our
+				// NAT's outbound mapping so the peer's own simultaneous
+				// punch (and reply) can land. If punching fails the
+				// transport's readLoop simply never re-binds, and
+				// cross-internet stays down — relay-data over WSS is the
+				// fallback.
+				punchAddr := net.JoinHostPort(c.IP, strconv.Itoa(int(dport)))
+				if err := meshNode.Punch(punchAddr); err != nil {
+					logger.Debug("punch failed", "addr", punchAddr, "error", err)
+				} else {
+					logger.Info("sent hole punch", "addr", punchAddr)
+				}
 			}
 		}
 	}()
