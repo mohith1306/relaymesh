@@ -33,6 +33,7 @@ func main() {
 	dashboardAddr := flag.String("dashboard", "", "Dashboard address (e.g., :8080 or 0.0.0.0:8080)")
 	webNodeAddr := flag.String("web-node", "", "Web node server address (e.g., :8082)")
 	aiAddr := flag.String("ai", "", "AI service address (e.g., localhost:50051)")
+	aiTLS := flag.Bool("ai-tls", false, "Connect to AI service over TLS (e.g., Render :443)")
 	sendTo := flag.String("send-to", "", "Phase 1 test: destination node ID to send messages to")
 	sendMsg := flag.String("send-msg", "hello-mesh", "Phase 1 test: message payload to send")
 	sendInterval := flag.Duration("send-interval", 5*time.Second, "Phase 1 test: interval between test messages")
@@ -173,6 +174,9 @@ func main() {
 	var aiRouter *ai.AIRouter
 	if *aiAddr != "" {
 		aiClient := ai.NewClient(*aiAddr, logger.With("component", "ai"))
+		if *aiTLS {
+			aiClient.EnableTLS()
+		}
 		if err := aiClient.Connect(ctx); err != nil {
 			logger.Warn("failed to connect to AI service, running without AI", "error", err)
 		} else {

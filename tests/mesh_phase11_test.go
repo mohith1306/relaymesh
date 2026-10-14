@@ -43,11 +43,16 @@ func TestMeshPhase11AIAdaptsToDegradation(t *testing.T) {
 		}, logger)
 	}
 
+	// Dynamic ports: the demo topology must not collide with a locally
+	// running mesh (the runbook uses 9451-9454 / 20171+).
+	disc := freeUDPPorts(t, 4)
+	data := freeUDPPorts(t, 4)
+
 	// Two loop-free paths A→C: via B (cheap, will degrade) and via D.
-	nodeA := newNode("node-A", 9451, 20171, []uint16{9452, 9454})
-	nodeB := newNode("node-B", 9452, 20172, []uint16{9451, 9453})
-	nodeC := newNode("node-C", 9453, 20173, []uint16{9452, 9454})
-	nodeD := newNode("node-D", 9454, 20174, []uint16{9451, 9453})
+	nodeA := newNode("node-A", disc[0], data[0], []uint16{disc[1], disc[3]})
+	nodeB := newNode("node-B", disc[1], data[1], []uint16{disc[0], disc[2]})
+	nodeC := newNode("node-C", disc[2], data[2], []uint16{disc[1], disc[3]})
+	nodeD := newNode("node-D", disc[3], data[3], []uint16{disc[0], disc[2]})
 
 	// Pin link costs before traffic so deterministic routing reliably
 	// prefers A—B—C (1ms vs 5ms): AI must later beat this preference
@@ -165,6 +170,38 @@ func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool)
 	}
 }
 
+// freeUDPPorts reserves n ephemeral UDP ports, records them, and
+// releases them for the caller to bind.
+func freeUDPPorts(t *testing.T, n int) []uint16 {
+	t.Helper()
+	ports := make([]uint16, 0, n)
+	conns := make([]*net.UDPConn, 0, n)
+	for i := 0; i < n; i++ {
+		l, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			t.Fatalf("alloc udp port: %v", err)
+		}
+		ports = append(ports, uint16(l.LocalAddr().(*net.UDPAddr).Port))
+		conns = append(conns, l)
+	}
+	for _, c := range conns {
+		c.Close()
+	}
+	return ports
+}
+
+// freeTCPPort reserves and releases one ephemeral TCP port.
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("alloc tcp port: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return port
+}
+
 // startPythonAI launches the real Python AI service on a dedicated
 // port and returns its address. Skips when no interpreter is available.
 func startPythonAI(t *testing.T) (addr string, stop func()) {
@@ -189,7 +226,7 @@ func startPythonAI(t *testing.T) (addr string, stop func()) {
 		python = p
 	}
 
-	port := 50661
+	port := freeTCPPort(t)
 	cmd := exec.Command(python, "-m", "ai.service.server", strconv.Itoa(port))
 	cmd.Dir = ".." // repo root: package ai lives there
 	var out bytes.Buffer
@@ -205,13 +242,14 @@ func startPythonAI(t *testing.T) (addr string, stop func()) {
 		}
 		stopped = true
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		_ = cmd.Wait() // reaps the process AND its stdout copiers
 	}
 	t.Cleanup(func() {
-		if t.Failed() {
+		failed := t.Failed()
+		stop() // drain copiers before reading the buffer
+		if failed {
 			t.Logf("AI service output:\n%s", out.String())
 		}
-		stop()
 	})
 
 	addr = fmt.Sprintf("127.0.0.1:%d", port)

@@ -7,3 +7,13 @@ services:
     envVars:
       - key: PORT
         value: 8080
+
+  - type: web
+    name: relaymesh-ai
+    runtime: docker
+    dockerfilePath: ai/Dockerfile
+    port: 50051
+    envVars:
+      - key: PORT
+        value: 50051
+

@@ -1,0 +1,7 @@
+.git
+.venv
+bin
+models
+**/__pycache__
+*.log
+*.md

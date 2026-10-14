@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,14 +12,17 @@ import (
 	"github.com/relaymesh/relaymesh/internal/routing"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Client struct {
-	conn   *grpc.ClientConn
-	client pb.AIServiceClient
-	logger *slog.Logger
-	addr   string
+	conn      *grpc.ClientConn
+	client    pb.AIServiceClient
+	logger    *slog.Logger
+	addr      string
+	useTLS    bool
+	tlsConfig *tls.Config
 }
 
 func NewClient(addr string, logger *slog.Logger) *Client {
@@ -28,10 +32,36 @@ func NewClient(addr string, logger *slog.Logger) *Client {
 	}
 }
 
+// EnableTLS connects to the AI service over TLS with the system root
+// CAs — required for cloud endpoints such as Render's :443 gRPC
+// proxy. Must be called before Connect.
+func (c *Client) EnableTLS() {
+	c.useTLS = true
+}
+
+// SetTLSConfig overrides the TLS configuration (custom CAs, tests).
+// Passing nil disables TLS. Must be called before Connect.
+func (c *Client) SetTLSConfig(cfg *tls.Config) {
+	c.tlsConfig = cfg
+	if cfg != nil {
+		c.useTLS = true
+	}
+}
+
 func (c *Client) Connect(ctx context.Context) error {
+	var creds credentials.TransportCredentials
+	switch {
+	case c.tlsConfig != nil:
+		creds = credentials.NewTLS(c.tlsConfig)
+	case c.useTLS:
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	default:
+		creds = insecure.NewCredentials()
+	}
+
 	var err error
 	c.conn, err = grpc.DialContext(ctx, c.addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithBlock(),
 	)
 	if err != nil {
@@ -39,7 +69,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 
 	c.client = pb.NewAIServiceClient(c.conn)
-	c.logger.Info("connected to AI service", "addr", c.addr)
+	c.logger.Info("connected to AI service", "addr", c.addr, "tls", c.useTLS)
 	return nil
 }
 

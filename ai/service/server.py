@@ -108,4 +108,7 @@ def serve(port: int = 50051):
 
 
 if __name__ == '__main__':
-    serve(int(sys.argv[1]) if len(sys.argv) > 1 else 50051)
+    if len(sys.argv) > 1:
+        serve(int(sys.argv[1]))
+    else:
+        serve(int(os.environ.get('PORT', 50051)))
