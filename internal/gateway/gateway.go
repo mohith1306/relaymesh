@@ -1,137 +1,158 @@
 package gateway
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net"
-	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/relaymesh/relaymesh/api/proto"
+	"github.com/relaymesh/relaymesh/internal/forwarding"
+	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
-	"github.com/relaymesh/relaymesh/internal/transport"
 )
 
-type GatewayNode struct {
-	nodeID       node.NodeID
-	internetConn *net.UDPConn
-	transport    transport.Transport
-	natTable     *NATTable
-	logger       *slog.Logger
-	mu           sync.RWMutex
+const (
+	defaultDialTimeout = 5 * time.Second
+	maxDialTimeout     = 10 * time.Second
+	flowTTL            = 5 * time.Minute
+	maxDatagram        = 65536
+)
+
+// Gateway is a full mesh participant that additionally serves internet
+// egress: mesh packets addressed to it carrying an EgressRequest are
+// dialed out to the internet target, and the reply is routed back
+// through the mesh to the requesting node:
+//
+//	Mesh node A -> relay B -> Gateway -> Internet target
+//	Internet target -> Gateway -> relay B -> Mesh node A
+type Gateway struct {
+	mesh   *mesh.MeshNode
+	nat    *NATTable
+	logger *slog.Logger
 }
 
-func NewGateway(nodeID node.NodeID, transport transport.Transport, logger *slog.Logger) *GatewayNode {
-	return &GatewayNode{
-		nodeID:    nodeID,
-		transport: transport,
-		natTable:  NewNATTable(),
-		logger:    logger,
+func New(cfg mesh.Config, logger *slog.Logger) *Gateway {
+	return &Gateway{
+		mesh:   mesh.New(cfg, logger),
+		nat:    NewNATTable(),
+		logger: logger,
 	}
 }
 
-func (g *GatewayNode) Start(internetAddr string) error {
-	addr, err := net.ResolveUDPAddr("udp4", internetAddr)
-	if err != nil {
+func (g *Gateway) Start(ctx context.Context) error {
+	if err := g.mesh.Start(ctx); err != nil {
 		return err
 	}
-
-	g.internetConn, err = net.ListenUDP("udp4", addr)
-	if err != nil {
-		return err
-	}
-
-	go g.internetListener()
-	go g.natCleanup()
-
-	g.logger.Info("gateway started",
-		"node_id", g.nodeID,
-		"internet_addr", internetAddr,
-	)
-
-	return nil
-}
-
-func (g *GatewayNode) Stop() error {
-	if g.internetConn != nil {
-		return g.internetConn.Close()
-	}
-	return nil
-}
-
-func (g *GatewayNode) internetListener() {
-	buf := make([]byte, 65536)
-	for {
-		n, remoteAddr, err := g.internetConn.ReadFromUDP(buf)
-		if err != nil {
+	g.mesh.OnDelivered(func(p forwarding.DeliveredPacket) {
+		req, ok := parseEgressRequest(p.Payload)
+		if !ok {
 			return
 		}
-
-		internalAddr, exists := g.natTable.GetInternalAddr(remoteAddr)
-		if !exists {
-			g.logger.Warn("no NAT entry for incoming packet",
-				"from", remoteAddr,
-			)
-			continue
-		}
-
-		g.logger.Debug("forwarding internet packet to mesh",
-			"from", remoteAddr,
-			"to", internalAddr,
-			"size", n,
-		)
-
-		g.forwardToMesh(buf[:n], internalAddr)
-	}
-}
-
-func (g *GatewayNode) forwardToMesh(data []byte, dest *net.UDPAddr) {
-	g.logger.Debug("forwarding data to mesh destination",
-		"destination", dest,
-		"size", len(data),
-	)
-}
-
-func (g *GatewayNode) ForwardToInternet(pkt *transport.Packet, from node.NodeID) {
-	g.logger.Debug("forwarding packet to internet",
-		"source", pkt.Source,
-		"from", from,
-		"size", len(pkt.Payload),
-	)
-
-	internalAddr := &net.UDPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: int(9001),
-	}
-
-	externalAddr := &net.UDPAddr{
-		IP:   net.ParseIP("8.8.8.8"),
-		Port: 53,
-	}
-
-	g.natTable.AddEntry(&NATEntry{
-		InternalAddr: internalAddr,
-		ExternalAddr: externalAddr,
-		Protocol:     "udp",
-		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(5 * time.Minute),
+		go g.handleEgress(p.Source, req)
 	})
-
-	if g.internetConn != nil {
-		g.internetConn.WriteToUDP(pkt.Payload, externalAddr)
-	}
+	go g.natJanitor(ctx)
+	return nil
 }
 
-func (g *GatewayNode) natCleanup() {
+func (g *Gateway) Stop() error { return g.mesh.Stop() }
+
+// Mesh exposes the underlying mesh node for routing, stats, and shutdown.
+func (g *Gateway) Mesh() *mesh.MeshNode { return g.mesh }
+
+// NAT exposes the flow table for observability and tests.
+func (g *Gateway) NAT() *NATTable { return g.nat }
+
+func parseEgressRequest(payload []byte) (*pb.EgressRequest, bool) {
+	var req pb.EgressRequest
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, false
+	}
+	if req.RequestId == "" || req.TargetHost == "" || req.TargetPort == 0 {
+		return nil, false
+	}
+	return &req, true
+}
+
+func (g *Gateway) handleEgress(source node.NodeID, req *pb.EgressRequest) {
+	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = defaultDialTimeout
+	}
+	if timeout > maxDialTimeout {
+		timeout = maxDialTimeout
+	}
+
+	target := net.JoinHostPort(req.TargetHost, fmt.Sprintf("%d", req.TargetPort))
+	g.nat.Track(source, req.RequestId, target, flowTTL)
+
+	g.logger.Info("egress dial",
+		"source", source,
+		"request_id", req.RequestId,
+		"target", target,
+	)
+
+	respond := func(ok bool, data []byte, errMsg string) {
+		resp := &pb.EgressResponse{
+			RequestId: req.RequestId,
+			Ok:        ok,
+			Data:      data,
+			Error:     errMsg,
+		}
+		raw, err := proto.Marshal(resp)
+		if err != nil {
+			g.logger.Error("failed to marshal egress response", "error", err)
+			return
+		}
+		if err := g.mesh.Send(source, raw); err != nil {
+			g.logger.Error("failed to return egress response",
+				"dest", source, "error", err)
+		}
+	}
+
+	conn, err := net.DialTimeout("udp", target, timeout)
+	if err != nil {
+		respond(false, nil, fmt.Sprintf("dial %s: %v", target, err))
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		respond(false, nil, fmt.Sprintf("set deadline: %v", err))
+		return
+	}
+	if _, err := conn.Write(req.Data); err != nil {
+		respond(false, nil, fmt.Sprintf("write to %s: %v", target, err))
+		return
+	}
+	buf := make([]byte, maxDatagram)
+	n, err := conn.Read(buf)
+	if err != nil {
+		respond(false, nil, fmt.Sprintf("read from %s: %v", target, err))
+		return
+	}
+	g.logger.Info("egress reply",
+		"source", source,
+		"request_id", req.RequestId,
+		"bytes", n,
+	)
+	respond(true, buf[:n], "")
+}
+
+func (g *Gateway) natJanitor(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-
-	for range ticker.C {
-		removed := g.natTable.Cleanup()
-		if removed > 0 {
-			g.logger.Debug("cleaned up NAT entries", "removed", removed)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if removed := g.nat.Cleanup(); removed > 0 {
+				g.logger.Debug("cleaned up NAT flows", "removed", removed)
+			}
 		}
 	}
-}
-
-func (g *GatewayNode) GetNATTable() *NATTable {
-	return g.natTable
 }

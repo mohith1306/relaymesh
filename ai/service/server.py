@@ -31,18 +31,35 @@ class AIServicer(relaymesh_pb2_grpc.AIServiceServicer):
                 'latency': request.state.feature_vector[0] if len(request.state.feature_vector) > 0 else 0.0,
                 'packet_loss': request.state.feature_vector[1] if len(request.state.feature_vector) > 1 else 0.0,
                 'bandwidth': request.state.feature_vector[2] if len(request.state.feature_vector) > 2 else 0.0,
-            }
+            },
+            # Live per-direct-link probe health: this is what lets the
+            # model see degradation the loss-blind graph cannot.
+            'peers': [
+                {
+                    'peer_id': p.peer_id,
+                    'latency': p.latency,
+                    'packet_loss': p.packet_loss,
+                    'bandwidth': p.bandwidth,
+                    'last_seen': p.last_seen,
+                }
+                for p in request.state.peers
+            ],
         }
         
         candidates = list(request.candidate_destinations)
+        candidate_paths = [
+            {'path': list(cp.path), 'base_cost': cp.base_cost}
+            for cp in request.candidate_paths
+        ]
         
         start_time = time.time()
-        result = self.inference.get_recommendation(state, candidates)
+        result = self.inference.get_recommendation(state, candidates, candidate_paths)
         inference_time = int((time.time() - start_time) * 1000)
         
         recommendation = relaymesh_pb2.RouteRecommendation(
             source=request.state.node_id,
             destination=result.get('destination', ''),
+            path=result.get('path', [request.state.node_id, result.get('destination', '')]),
             confidence=result.get('confidence', 0.0),
             score=result.get('score', 0.0),
             timestamp=int(time.time()),
@@ -91,4 +108,4 @@ def serve(port: int = 50051):
 
 
 if __name__ == '__main__':
-    serve()
+    serve(int(sys.argv[1]) if len(sys.argv) > 1 else 50051)

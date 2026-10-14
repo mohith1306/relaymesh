@@ -69,29 +69,29 @@ func TestMeshPhase2Diamond(t *testing.T) {
 
 	// A must find a 2-hop route to D through either B or C.
 	nh := waitRoute(nodeA, "node-D", 10*time.Second)
-	route, _ := nodeA.Router().GetRoute("node-D")
+	route, ok := nodeA.Router().GetRoute("node-D")
+	if !ok {
+		t.Fatalf("route to node-D vanished mid-test")
+	}
 	if route.HopCount != 2 {
 		t.Fatalf("expected 2-hop route A -> D, got %d hops via %s (path=%v)", route.HopCount, nh, route.Path)
 	}
 	t.Logf("initial route A -> D: %v", route.Path)
 
-	// Deliver end-to-end over the chosen path.
-	if err := nodeA.Send("node-D", []byte("diamond-1")); err != nil {
-		t.Fatalf("A failed to send to D: %v", err)
+	// The relay needs its own route before it can forward.
+	if route.Path[1] == "node-B" {
+		waitRouteTo(t, nodeB, "node-D", 10*time.Second)
+	} else {
+		waitRouteTo(t, nodeC, "node-D", 10*time.Second)
 	}
-	select {
-	case d := <-nodeD.Delivered():
-		if string(d.Payload) != "diamond-1" {
-			t.Fatalf("D received wrong payload: %q", string(d.Payload))
-		}
-		if len(d.Path) != 3 {
-			t.Fatalf("expected 3-node delivery path, got %v", d.Path)
-		}
-		t.Logf("delivered A -> D via path %v", d.Path)
-	case <-time.After(5 * time.Second):
-		t.Fatalf("D never received packet from A (A=%+v B=%+v C=%+v D=%+v)",
-			nodeA.Stats(), nodeB.Stats(), nodeC.Stats(), nodeD.Stats())
+
+	// Deliver end-to-end over the chosen path (retries cover the
+	// window where the relay's forwarding table has not synced yet).
+	d := sendUntilDelivered(t, nodeA, nodeD, "node-D", []byte("diamond-1"), 8*time.Second)
+	if len(d.Path) != 3 {
+		t.Fatalf("expected 3-node delivery path, got %v", d.Path)
 	}
+	t.Logf("delivered A -> D via path %v", d.Path)
 
 	// Kill the middle node on the active path and verify failover
 	// to the surviving branch.
@@ -118,22 +118,18 @@ func TestMeshPhase2Diamond(t *testing.T) {
 	}
 	t.Logf("failover route A -> D via %s", newNH)
 
-	if err := nodeA.Send("node-D", []byte("diamond-2")); err != nil {
-		t.Fatalf("A failed to send to D after failover: %v", err)
+	// The surviving relay needs a synced route before forwarding.
+	if newNH == "node-B" {
+		waitRouteTo(t, nodeB, "node-D", 10*time.Second)
+	} else {
+		waitRouteTo(t, nodeC, "node-D", 10*time.Second)
 	}
-	select {
-	case d := <-nodeD.Delivered():
-		if string(d.Payload) != "diamond-2" {
-			t.Fatalf("D received wrong payload after failover: %q", string(d.Payload))
+
+	d2 := sendUntilDelivered(t, nodeA, nodeD, "node-D", []byte("diamond-2"), 8*time.Second)
+	for _, n := range d2.Path {
+		if n == victim {
+			t.Fatalf("failover path still traverses dead node %s: %v", victim, d2.Path)
 		}
-		for _, n := range d.Path {
-			if n == victim {
-				t.Fatalf("failover path still traverses dead node %s: %v", victim, d.Path)
-			}
-		}
-		t.Logf("delivered A -> D after failover via path %v", d.Path)
-	case <-time.After(5 * time.Second):
-		t.Fatalf("D never received packet after failover (A=%+v C=%+v D=%+v)",
-			nodeA.Stats(), nodeC.Stats(), nodeD.Stats())
 	}
+	t.Logf("delivered A -> D after failover via path %v", d2.Path)
 }

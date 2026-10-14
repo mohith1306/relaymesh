@@ -24,6 +24,7 @@ message RelayPacket {
     uint32 hop_count = 9;
     repeated string path = 10;
     uint32 priority = 11;
+    bytes auth_tag = 12;
 }
 
 message RoutingUpdate {
@@ -85,6 +86,61 @@ message RouteInvalidation {
     int64 timestamp = 4;
 }
 
+message EgressRequest {
+    string request_id = 1;
+    string target_host = 2;
+    uint32 target_port = 3;
+    bytes data = 4;
+    uint32 timeout_ms = 5;
+}
+
+message EgressResponse {
+    string request_id = 1;
+    bool ok = 2;
+    bytes data = 3;
+    string error = 4;
+}
+
+message LinkProbe {
+    string probe_id = 1;
+    int64 sent_at_unix_nano = 2;
+}
+
+message LinkPong {
+    string probe_id = 1;
+    int64 sent_at_unix_nano = 2;
+    int64 replied_at_unix_nano = 3;
+}
+
+// HandshakeInit begins mutual authentication for the encrypted data
+// plane. signature is Ed25519 over the handshake transcript; psk_proof
+// is HMAC-SHA256(psk, transcript) when a network PSK is configured.
+message HandshakeInit {
+    uint32 version = 1;
+    string from = 2;
+    string to = 3;
+    bytes identity_pub = 4;
+    bytes ephemeral_pub = 5;
+    bytes nonce = 6;
+    string data_addr = 7;
+    bytes session_id = 8;
+    bytes signature = 9;
+    bytes psk_proof = 10;
+}
+
+// HandshakeResp completes the exchange; both sides derive session
+// keys from the X25519 shared secret and the full transcript.
+message HandshakeResp {
+    uint32 version = 1;
+    string from = 2;
+    string to = 3;
+    bytes identity_pub = 4;
+    bytes ephemeral_pub = 5;
+    bytes nonce = 6;
+    bytes signature = 7;
+    bytes psk_proof = 8;
+}
+
 message NetworkMetrics {
     double latency = 1;
     double packet_loss = 2;
@@ -137,9 +193,18 @@ message RouteRecommendation {
     int64 timestamp = 6;
 }
 
+// CandidatePath is a loop-free path from source to destination that
+// Go has already enumerated from its topology graph. Go keeps topology
+// knowledge; Python only scores the options it is given.
+message CandidatePath {
+    repeated string path = 1;
+    double base_cost = 2;
+}
+
 message InferenceRequest {
     NetworkState state = 1;
     repeated string candidate_destinations = 2;
+    repeated CandidatePath candidate_paths = 3;
 }
 
 message InferenceResponse {

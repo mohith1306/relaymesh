@@ -2,26 +2,25 @@ package ai
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/relaymesh/relaymesh/internal/node"
 	"github.com/relaymesh/relaymesh/internal/routing"
 )
 
 type SafetyValidator struct {
-	router  *routing.Router
-	logger  *slog.Logger
-	maxHops uint32
-	maxLatency float64
+	router        *routing.Router
+	logger        *slog.Logger
+	maxHops       uint32
+	maxLatency    float64
 	maxPacketLoss float64
 }
 
 func NewSafetyValidator(router *routing.Router, logger *slog.Logger) *SafetyValidator {
 	return &SafetyValidator{
-		router:       router,
-		logger:       logger,
-		maxHops:      10,
-		maxLatency:   100.0,
+		router:        router,
+		logger:        logger,
+		maxHops:       10,
+		maxLatency:    100.0,
 		maxPacketLoss: 0.1,
 	}
 }
@@ -126,29 +125,4 @@ func (sv *SafetyValidator) ValidateRecommendation(
 		Valid:  true,
 		Reason: "valid",
 	}
-}
-
-func (sv *SafetyValidator) ShouldUseAI(
-	source, destination node.NodeID,
-	aiAvailable bool,
-	lastAIRecommendation time.Time,
-) bool {
-	if !aiAvailable {
-		return false
-	}
-
-	deterministicRoute, exists := sv.router.GetRoute(destination)
-	if !exists {
-		return true
-	}
-
-	if deterministicRoute.HopCount > 3 {
-		return true
-	}
-
-	if time.Since(lastAIRecommendation) > 30*time.Second {
-		return true
-	}
-
-	return false
 }

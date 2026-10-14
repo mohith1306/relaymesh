@@ -15,13 +15,15 @@ import (
 	"github.com/relaymesh/relaymesh/internal/ai"
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
+	"github.com/relaymesh/relaymesh/internal/identity"
 	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"github.com/relaymesh/relaymesh/web"
 )
 
-func main() {	configPath := flag.String("config", "", "Path to config file")
+func main() {
+	configPath := flag.String("config", "", "Path to config file")
 	nodeID := flag.String("node-id", "", "Node ID (overrides config)")
 	port := flag.Int("port", 0, "Discovery port (overrides config)")
 	dataPort := flag.Int("data-port", 0, "Mesh data port (default: discovery port + 10000)")
@@ -35,6 +37,9 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 	sendMsg := flag.String("send-msg", "hello-mesh", "Phase 1 test: message payload to send")
 	sendInterval := flag.Duration("send-interval", 5*time.Second, "Phase 1 test: interval between test messages")
 	knownPorts := flag.String("known-ports", "9001,9002,9003,9004,9005", "Comma-separated discovery ports to probe for peers")
+	psk := flag.String("psk", "", "Preshared key for data-plane packet authentication (all peers must match)")
+	identityPath := flag.String("identity", "", "Path to Ed25519 identity file (created if missing)")
+	encrypt := flag.Bool("encrypt", false, "Require authenticated encryption on the data plane (requires --identity)")
 	flag.Parse()
 
 	if *generateConfig {
@@ -124,6 +129,27 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 
 	// Phase 1 v1: single wired mesh data plane.
 	// Discovery -> Router -> Forwarder -> Transport, all connected.
+	if *encrypt && *identityPath == "" {
+		fmt.Fprintf(os.Stderr, "--encrypt requires --identity\n")
+		os.Exit(1)
+	}
+	var ident *identity.Identity
+	if *identityPath != "" {
+		created := false
+		var err error
+		ident, created, err = identity.LoadOrCreate(*identityPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading identity: %v\n", err)
+			os.Exit(1)
+		}
+		if created {
+			logger.Info("generated new identity", "path", *identityPath,
+				"fingerprint", identity.Fingerprint(ident.PublicKey()))
+		} else {
+			logger.Info("loaded identity", "path", *identityPath,
+				"fingerprint", identity.Fingerprint(ident.PublicKey()))
+		}
+	}
 	meshNode := mesh.New(mesh.Config{
 		NodeID:              nodeConfig.ID,
 		Address:             localIP,
@@ -132,6 +158,9 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 		KnownDiscoveryPorts: knownDiscoveryPorts,
 		HeartbeatInterval:   nodeConfig.HeartbeatInterval,
 		PeerTimeout:         nodeConfig.PeerTimeout,
+		PSK:                 []byte(*psk),
+		Identity:            ident,
+		Encrypt:             *encrypt,
 	}, logger.With("component", "mesh"))
 	if err := meshNode.Start(ctx); err != nil {
 		logger.Error("failed to start mesh node", "error", err)
@@ -147,9 +176,10 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 		if err := aiClient.Connect(ctx); err != nil {
 			logger.Warn("failed to connect to AI service, running without AI", "error", err)
 		} else {
-			aiRouter = ai.NewAIRouter(router, aiClient, logger.With("component", "ai-router"))
+			aiRouter = ai.NewAIRouter(nodeConfig.ID, router, aiClient, logger.With("component", "ai-router"))
 			aiRouter.SetAIAvailable(true)
 			aiRouter.SetCollector(nodeConfig.ID, collector)
+			meshNode.SetAdvisor(aiRouter)
 			logger.Info("AI routing enabled", "ai_addr", *aiAddr)
 		}
 	}
@@ -175,6 +205,15 @@ func main() {	configPath := flag.String("config", "", "Path to config file")
 				}
 				dashboard.UpdatePeers(nodeConfig.ID, peerIDs)
 				dashboard.UpdateNodeState(nodeConfig.ID, n.State().String())
+				meshNode.SyncTelemetry(collector)
+				if aiRouter != nil {
+					ids := make([]node.NodeID, 0, len(peers)+1)
+					ids = append(ids, nodeConfig.ID)
+					for _, p := range peers {
+						ids = append(ids, p.ID)
+					}
+					aiRouter.SetPeers(ids)
+				}
 			}
 		}
 	}()

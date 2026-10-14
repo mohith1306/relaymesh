@@ -27,15 +27,40 @@ class RelayMeshEnv:
         self.simulator = NetworkSimulator(topology)
         self.current_path = [self.source]
         self.step_count = 0
-        return self.simulator.reset()
+        self.simulator.reset()
+        return self._observe()
+
+    def _observe(self) -> np.ndarray:
+        """Position-aware observation: features describe the network as
+        seen from the agent's CURRENT node, so identical topologies at
+        different positions produce different states."""
+        return self.simulator.topology.get_state_vector(
+            self.current_path[-1], self.destination)
+
+    def _distance_to_dest(self, frm: str) -> float:
+        """Cheapest-path cost from frm to destination (inf if none)."""
+        paths = self.simulator.topology.get_all_paths(frm, self.destination, max_hops=10)
+        if not paths:
+            return float('inf')
+        return min(self.simulator.topology.calculate_path_cost(p) for p in paths)
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict]:
         self.step_count += 1
+        prev_node = self.current_path[-1]
         next_node = self.node_ids[action]
 
         self.current_path.append(next_node)
 
-        state, reward, done, info = self.simulator.step(action)
+        _, _, done, info = self.simulator.step(action)
+
+        # Directional shaping: reward progress toward the destination so
+        # the agent learns WHICH hop to take, not just that paths exist.
+        d_before = self._distance_to_dest(prev_node)
+        d_after = self._distance_to_dest(next_node)
+        if d_before == float('inf') or d_after == float('inf'):
+            reward = -5.0
+        else:
+            reward = (d_before - d_after) * 0.5
 
         if next_node == self.destination:
             reward += 20.0
@@ -51,7 +76,7 @@ class RelayMeshEnv:
             info['invalid_move'] = True
 
         info['current_path'] = self.current_path.copy()
-        return state, reward, done, info
+        return self._observe(), reward, done, info
 
     def get_valid_actions(self) -> list:
         if not self.simulator or not self.current_path:

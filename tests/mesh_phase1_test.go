@@ -65,25 +65,15 @@ func TestMeshPhase1MultiHop(t *testing.T) {
 	}
 	t.Logf("route A -> C via %s confirmed", nextHop)
 
-	// Send a real packet from A to C; it must be relayed by B.
-	payload := []byte("hello-via-b")
-	if err := nodeA.Send("node-C", payload); err != nil {
-		t.Fatalf("A failed to send to C: %v", err)
-	}
+	// The relay needs its own route before it can forward.
+	waitRouteTo(t, nodeB, "node-C", 10*time.Second)
 
-	select {
-	case d := <-nodeC.Delivered():
-		if string(d.Payload) != string(payload) {
-			t.Fatalf("C received wrong payload: %q", string(d.Payload))
-		}
-		if d.Source != "node-A" {
-			t.Fatalf("C received packet from wrong source: %s", d.Source)
-		}
-		t.Logf("C delivered packet from %s payload=%q", d.Source, string(d.Payload))
-	case <-time.After(5 * time.Second):
-		t.Fatalf("C never received packet from A (A stats=%+v B stats=%+v C stats=%+v)",
-			nodeA.Stats(), nodeB.Stats(), nodeC.Stats())
+	// Send a real packet from A to C; it must be relayed by B.
+	d := sendUntilDelivered(t, nodeA, nodeC, "node-C", []byte("hello-via-b"), 8*time.Second)
+	if d.Source != "node-A" {
+		t.Fatalf("C received packet from wrong source: %s", d.Source)
 	}
+	t.Logf("C delivered packet from %s payload=%q", d.Source, string(d.Payload))
 
 	// B must have actually forwarded the packet (proof of relay).
 	if fwd := nodeB.Stats().Forwarded; fwd < 1 {

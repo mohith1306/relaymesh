@@ -1,10 +1,18 @@
 package forwarding
 
 import (
+	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/relaymesh/relaymesh/internal/node"
 )
+
+// packetSeq guarantees process-wide unique packet IDs. Timestamps alone
+// are unsafe: clocks often resolve to microseconds, and two packets
+// created in the same tick would share an ID and kill each other in
+// the duplicate detector.
+var packetSeq atomic.Uint64
 
 type PacketID string
 
@@ -36,7 +44,7 @@ func (p *Packet) HasVisited(id node.NodeID) bool {
 
 func NewPacket(source, destination node.NodeID, payload []byte, ttl uint32) *Packet {
 	return &Packet{
-		ID:          PacketID(generateID()),
+		ID:          PacketID(generateID(source)),
 		Source:      source,
 		Destination: destination,
 		Payload:     payload,
@@ -62,6 +70,6 @@ func (p *Packet) IncrementSequence() {
 	p.Sequence++
 }
 
-func generateID() string {
-	return time.Now().Format("20060102150405.000000000")
+func generateID(source node.NodeID) string {
+	return fmt.Sprintf("%s-%d-%d", source, time.Now().UnixNano(), packetSeq.Add(1))
 }
