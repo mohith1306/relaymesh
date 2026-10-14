@@ -15,9 +15,11 @@ import (
 	"github.com/relaymesh/relaymesh/internal/ai"
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
+	"github.com/relaymesh/relaymesh/internal/flow"
 	"github.com/relaymesh/relaymesh/internal/identity"
 	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
+	"github.com/relaymesh/relaymesh/internal/proxy"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"github.com/relaymesh/relaymesh/web"
 )
@@ -41,6 +43,8 @@ func main() {
 	psk := flag.String("psk", "", "Preshared key for data-plane packet authentication (all peers must match)")
 	identityPath := flag.String("identity", "", "Path to Ed25519 identity file (created if missing)")
 	encrypt := flag.Bool("encrypt", false, "Require authenticated encryption on the data plane (requires --identity)")
+	proxyAddr := flag.String("proxy", "", "Local SOCKS5/HTTP proxy address (e.g., 127.0.0.1:1080) to ride the mesh via a gateway")
+	gatewayID := flag.String("gateway", "", "Gateway node ID to route proxied traffic through (required with --proxy)")
 	flag.Parse()
 
 	if *generateConfig {
@@ -168,6 +172,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Client-side SOCKS5/HTTP proxy: local apps dial it, traffic is
+	// tunneled through the mesh to the gateway and out to the internet.
+	var proxySrv *proxy.Server
+	if *proxyAddr != "" {
+		if *gatewayID == "" {
+			logger.Error("--proxy requires --gateway <node-id>", "error", "missing gateway")
+			os.Exit(1)
+		}
+		flowMgr := flow.NewManager(nodeConfig.ID, meshNode.Send, logger.With("component", "flow"))
+		meshNode.AddPayloadHandler(flowMgr.HandlePacket)
+		dialer := &flow.GatewayDialer{Mgr: flowMgr, Gw: node.NodeID(*gatewayID)}
+		proxySrv = proxy.NewServer(*proxyAddr, dialer, logger.With("component", "proxy"))
+		go func() {
+			if err := proxySrv.ListenAndServe(ctx); err != nil {
+				logger.Warn("proxy server stopped", "error", err)
+			}
+		}()
+		logger.Info("proxy listening", "addr", *proxyAddr, "gateway", *gatewayID)
+	}
+
 	router := meshNode.Router()
 	collector := telemetry.NewCollector(nodeConfig.ID)
 
@@ -176,8 +200,7 @@ func main() {
 		aiClient := ai.NewClient(*aiAddr, logger.With("component", "ai"))
 		if *aiTLS {
 			aiClient.EnableTLS()
-		}
-		// Generous deadline: cloud services (Render free tier) can take
+		} // Generous deadline: cloud services (Render free tier) can take
 		// up to ~60s to wake, and the connect attempt itself wakes them.
 		logger.Info("connecting to AI service", "addr", *aiAddr, "tls", *aiTLS)
 		connectCtx, connectCancel := context.WithTimeout(ctx, 90*time.Second)
@@ -334,6 +357,9 @@ func main() {
 	)
 	<-ctx.Done()
 
+	if proxySrv != nil {
+		proxySrv.Close()
+	}
 	_ = meshNode.Stop()
 	if err := n.Stop(); err != nil {
 		logger.Error("error stopping node", "error", err)

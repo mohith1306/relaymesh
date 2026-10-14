@@ -114,7 +114,42 @@ Example `relaymesh.json`:
 --config        Path to config file
 --log-level     Log level (debug, info, warn, error)
 --generate-config  Generate default config file
+--proxy        Local SOCKS5/HTTP proxy address (e.g., 127.0.0.1:1080)
+--gateway      Gateway node ID to route proxied traffic through (required with --proxy)
 ```
+
+## Phase 13: Ride the Mesh from Any App
+
+A mesh node can expose a local SOCKS5 + HTTP CONNECT proxy. Local apps
+(browser, `curl`, WhatsApp's HTTP proxy setting) point at it; traffic is
+tunneled through the mesh to the gateway node and out to the internet.
+
+Live demo (three terminals):
+
+```bash
+# Terminal 1 — the gateway (has real internet egress)
+go run ./cmd/gateway --node-id node-GW --port 9001
+
+# Terminal 2 — a mesh hop / relay
+go run ./cmd/relaymesh --node-id node-B --port 9002 --known-ports 9001
+
+# Terminal 3 — client node + local proxy
+go run ./cmd/relaymesh --node-id node-A --port 9003 --known-ports 9002 \
+  --proxy 127.0.0.1:1080 --gateway node-GW
+```
+
+Then from any app on your machine:
+
+```bash
+# SOCKS5 (curl resolves the hostname at the gateway, not locally)
+curl --socks5-hostname 127.0.0.1:1080 https://www.facebook.com
+
+# HTTP CONNECT (what a browser / WhatsApp proxy setting uses)
+HTTPS_PROXY=http://127.0.0.1:1080 curl https://www.facebook.com
+```
+
+The client node never needs internet itself — only radio/IP reachability
+of at least one mesh peer. The gateway node provides the real egress.
 
 ## Project Structure
 
