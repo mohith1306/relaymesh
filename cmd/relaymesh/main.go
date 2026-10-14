@@ -177,8 +177,15 @@ func main() {
 		if *aiTLS {
 			aiClient.EnableTLS()
 		}
-		if err := aiClient.Connect(ctx); err != nil {
+		// Generous deadline: cloud services (Render free tier) can take
+		// up to ~60s to wake, and the connect attempt itself wakes them.
+		logger.Info("connecting to AI service", "addr", *aiAddr, "tls", *aiTLS)
+		connectCtx, connectCancel := context.WithTimeout(ctx, 90*time.Second)
+		err := aiClient.Connect(connectCtx)
+		connectCancel()
+		if err != nil {
 			logger.Warn("failed to connect to AI service, running without AI", "error", err)
+			aiClient.Close()
 		} else {
 			aiRouter = ai.NewAIRouter(nodeConfig.ID, router, aiClient, logger.With("component", "ai-router"))
 			aiRouter.SetAIAvailable(true)
