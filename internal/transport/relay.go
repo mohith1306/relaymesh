@@ -34,9 +34,9 @@ type RelayTransport struct {
 	relayURL string
 	closed   atomic.Bool
 
-	psk            []byte
-	authFailures   uint64
-	logger         *slog.Logger
+	psk          []byte
+	authFailures uint64
+	logger       *slog.Logger
 }
 
 // RelayConfig configures a RelayTransport.
