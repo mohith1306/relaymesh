@@ -13,21 +13,22 @@ import (
 )
 
 type Discovery struct {
-	nodeID      node.NodeID
-	address     string
-	port        uint16
-	dataPort    uint16
-	conn        *net.UDPConn
-	peers       *PeerList
-	logger      *slog.Logger
-	interval    time.Duration
-	peerTimeout time.Duration
-	sequence    uint64
-	knownPorts  []uint16
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	onPeer      func(*Peer)
-	onPeerLost  func(node.NodeID)
+	nodeID        node.NodeID
+	address       string
+	port          uint16
+	dataPort      uint16
+	conn          *net.UDPConn
+	peers         *PeerList
+	logger        *slog.Logger
+	interval      time.Duration
+	peerTimeout   time.Duration
+	sequence      uint64
+	knownPorts    []uint16
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	onPeer        func(*Peer)
+	onPeerLost    func(node.NodeID)
+	remoteAdvertise map[node.NodeID]uint16 // peer -> public data port (srflx)
 }
 
 type DiscoveryConfig struct {
@@ -41,31 +42,33 @@ type DiscoveryConfig struct {
 }
 
 type HeartbeatMessage struct {
-	Type         string        `json:"type"`
-	NodeID       node.NodeID   `json:"node_id"`
-	Address      string        `json:"address"`
-	Port         uint16        `json:"port"`
-	DataPort     uint16        `json:"data_port"`
-	Sequence     uint64        `json:"sequence"`
-	Capabilities []Capability  `json:"capabilities"`
-	KnownPeers   []node.NodeID `json:"known_peers"`
-	Timestamp    time.Time     `json:"timestamp"`
+	Type             string                  `json:"type"`
+	NodeID           node.NodeID             `json:"node_id"`
+	Address          string                  `json:"address"`
+	Port             uint16                  `json:"port"`
+	DataPort         uint16                  `json:"data_port"`
+	Sequence         uint64                  `json:"sequence"`
+	Capabilities     []Capability            `json:"capabilities"`
+	KnownPeers       []node.NodeID           `json:"known_peers"`
+	KnownRemotePeers map[node.NodeID]uint16  `json:"known_remote_peers,omitempty"`
+	Timestamp        time.Time               `json:"timestamp"`
 }
 
 const MaxPacketSize = 4096
 
 func New(config DiscoveryConfig, logger *slog.Logger) *Discovery {
 	return &Discovery{
-		nodeID:      config.NodeID,
-		address:     config.Address,
-		port:        config.Port,
-		dataPort:    config.DataPort,
-		peers:       NewPeerList(),
-		logger:      logger,
-		interval:    config.Interval,
-		peerTimeout: config.PeerTimeout,
-		knownPorts:  config.KnownPorts,
-		stopCh:      make(chan struct{}),
+		nodeID:          config.NodeID,
+		address:         config.Address,
+		port:            config.Port,
+		dataPort:        config.DataPort,
+		peers:           NewPeerList(),
+		logger:          logger,
+		interval:        config.Interval,
+		peerTimeout:     config.PeerTimeout,
+		knownPorts:      config.KnownPorts,
+		stopCh:          make(chan struct{}),
+		remoteAdvertise: make(map[node.NodeID]uint16),
 	}
 }
 
@@ -81,6 +84,44 @@ func (d *Discovery) OnPeerLost(cb func(node.NodeID)) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.onPeerLost = cb
+}
+
+// AdvertiseRemote tells discovery that peer has a publicly reachable
+// (server-reflexive) data-plane port. Heartbeats will include this in a
+// KnownRemotePeers list so LAN peers can also route to it, and the peer
+// entry is created/kept alive here so the cleanup loop does not evict it
+// while signaling keeps refreshing it.
+func (d *Discovery) AdvertiseRemote(peer node.NodeID, publicDataPort uint16) {
+	d.mu.Lock()
+	d.remoteAdvertise[peer] = publicDataPort
+	d.mu.Unlock()
+}
+
+// AddCandidate injects a peer learned out-of-band (via signaling). The
+// peer is kept alive by repeated calls from the signaling client's
+// refresh loop; once refresh stops, the cleanup loop evicts it normally.
+func (d *Discovery) AddCandidate(id node.NodeID, addr string, port, dataPort uint16) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	peer, exists := d.peers.Get(id)
+	if !exists {
+		peer = NewPeerWithData(id, addr, port, dataPort)
+		d.peers.Add(peer)
+		d.logger.Info("added remote candidate",
+			"peer_id", id, "address", addr, "port", port, "data_port", dataPort)
+		if d.onPeer != nil {
+			cb := d.onPeer
+			go cb(peer)
+		}
+	}
+	peer.Address = addr
+	peer.Port = port
+	if dataPort != 0 {
+		peer.DataPort = dataPort
+	}
+	// Touch LastSeen so cleanup does not evict before the next refresh.
+	peer.LastSeen = time.Now()
 }
 
 func (d *Discovery) Start(ctx context.Context) error {
@@ -180,6 +221,19 @@ func (d *Discovery) handleHeartbeat(msg HeartbeatMessage) {
 	if msg.DataPort != 0 {
 		peer.DataPort = msg.DataPort
 	}
+
+	// A remote (public) candidate for another node overrides the private
+	// address we would otherwise use for its data plane.
+	if msg.KnownRemotePeers != nil {
+		for rid, rport := range msg.KnownRemotePeers {
+			if rid == d.nodeID {
+				continue
+			}
+			if rp, ok := d.peers.Get(rid); ok && rport != 0 {
+				rp.DataPort = rport
+			}
+		}
+	}
 }
 
 func (d *Discovery) sendLoop(ctx context.Context) {
@@ -212,6 +266,12 @@ func (d *Discovery) sendLoop(ctx context.Context) {
 				Capabilities: []Capability{CapabilityRelay, CapabilityRelayMesh},
 				KnownPeers:   known,
 				Timestamp:    time.Now(),
+			}
+			if len(d.remoteAdvertise) > 0 {
+				msg.KnownRemotePeers = make(map[node.NodeID]uint16, len(d.remoteAdvertise))
+				for pid, pport := range d.remoteAdvertise {
+					msg.KnownRemotePeers[pid] = pport
+				}
 			}
 
 			data, err := json.Marshal(msg)

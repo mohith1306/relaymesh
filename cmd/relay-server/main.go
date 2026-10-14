@@ -279,7 +279,23 @@ type Client struct {
 	IsWeb      bool
 	Hops       int
 	LastSeen   time.Time
+	// IsRelay is true for clients connected to /relay-ws (the mesh
+	// data-plane fallback and signaling endpoint) rather than the
+	// browser-facing /ws.
+	IsRelay    bool
+	// Candidates are the client's known server-reflexive (public)
+	// addresses, refreshed on each "candidate" message.
+	Candidates []Candidate
 	mu         sync.Mutex
+}
+
+// Candidate is a server-reflexive (public) UDP address a node has
+// discovered via STUN, exchanged via the "register"/"candidate"
+// signaling messages.
+type Candidate struct {
+	IP       string `json:"ip"`
+	Port     uint16 `json:"port"`
+	DataPort uint16 `json:"data_port,omitempty"`
 }
 
 type Message struct {
@@ -312,6 +328,7 @@ func NewRelayServer() *RelayServer {
 
 func (s *RelayServer) Start(addr string) {
 	http.HandleFunc("/ws", s.handleWebSocket)
+	http.HandleFunc("/relay-ws", s.handleRelayWS)
 	http.HandleFunc("/", s.handleIndex)
 	http.HandleFunc("/health", s.handleHealth)
 
@@ -371,6 +388,45 @@ func (s *RelayServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleRelayWS is the mesh-facing endpoint: /relay-ws carries both
+// signaling (register/candidate exchange for hole punching) and, on
+// failure of punching, opaque relay-data frames between registered
+// nodes. It is deliberately a separate path from the browser-facing /ws
+// so the two message schemas cannot collide.
+func (s *RelayServer) handleRelayWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("relay-ws upgrade failed: %v", err)
+		return
+	}
+
+	client := &Client{Conn: conn, LastSeen: time.Now(), IsRelay: true}
+
+	s.clientsMu.Lock()
+	s.clients[conn] = client
+	s.clientsMu.Unlock()
+
+	log.Printf("Relay-mode client connected from %s", r.RemoteAddr)
+
+	defer func() {
+		s.clientsMu.Lock()
+		delete(s.clients, conn)
+		s.clientsMu.Unlock()
+		conn.Close()
+		if client.ID != "" {
+			log.Printf("Relay-mode client disconnected: %s", client.ID)
+		}
+	}()
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		s.handleMessage(client, message)
+	}
+}
+
 func (s *RelayServer) handleMessage(client *Client, rawMsg []byte) {
 	var msg Message
 	if err := json.Unmarshal(rawMsg, &msg); err != nil {
@@ -384,24 +440,127 @@ func (s *RelayServer) handleMessage(client *Client, rawMsg []byte) {
 		client.LastSeen = time.Now()
 	case "get_peers":
 		s.sendPeerList(client)
+	case "signal":
+		s.handleSignal(client, rawMsg)
+	case "relay-data":
+		s.handleRelayData(client, rawMsg)
 	}
 }
 
 func (s *RelayServer) handleRegister(client *Client, msg Message) {
 	var payload struct {
-		NodeID     string `json:"node_id"`
-		DeviceName string `json:"device_name"`
+		NodeID     string      `json:"node_id"`
+		DeviceName string      `json:"device_name"`
+		Candidates []Candidate `json:"candidates,omitempty"`
 	}
 	json.Unmarshal(msg.Payload, &payload)
 
 	client.ID = payload.NodeID
 	client.DeviceName = payload.DeviceName
 	client.LastSeen = time.Now()
+	client.Candidates = payload.Candidates
 
-	log.Printf("Node registered: %s (%s)", payload.NodeID, payload.DeviceName)
+	log.Printf("Node registered: %s (%s) candidates=%d", payload.NodeID, payload.DeviceName, len(payload.Candidates))
 
 	s.sendPeerList(client)
 	s.broadcastPeerList()
+}
+
+// handleSignal is the ICE-lite rendezvous path: on "register" or
+// "candidate" the server records the sender's server-reflexive address
+// and pushes the full candidate list for every other registered node
+// back to that node. Nodes then race UDP hole punches on their own; if
+// punching fails they fall back to relay-data over this same WSS.
+func (s *RelayServer) handleSignal(client *Client, rawMsg []byte) {
+	var msg Message
+	if err := json.Unmarshal(rawMsg, &msg); err != nil {
+		return
+	}
+	var payload struct {
+		Candidates []Candidate `json:"candidates,omitempty"`
+	}
+	json.Unmarshal(msg.Payload, &payload)
+
+	client.mu.Lock()
+	if len(payload.Candidates) > 0 {
+		client.Candidates = payload.Candidates
+	}
+	client.LastSeen = time.Now()
+	clientID := client.ID
+	cands := client.Candidates
+	client.mu.Unlock()
+
+	// Build a map of node_id -> candidates for all relay-mode clients.
+	s.clientsMu.RLock()
+	peers := make(map[string][]Candidate)
+	for _, c := range s.clients {
+		if c.ID == "" || c.ID == clientID {
+			continue
+		}
+		c.mu.Lock()
+		peers[c.ID] = c.Candidates
+		c.mu.Unlock()
+	}
+	s.clientsMu.RUnlock()
+
+	out := struct {
+		Peers map[string][]Candidate `json:"peers"`
+	}{Peers: peers}
+	payloadOut, _ := json.Marshal(out)
+	resp := Message{Type: "signal", Payload: payloadOut, Timestamp: time.Now()}
+	data, _ := json.Marshal(resp)
+	client.Conn.WriteMessage(websocket.TextMessage, data)
+
+	log.Printf("Signal update from %s: %d candidates, %d known peers", clientID, len(cands), len(peers))
+}
+
+// handleRelayData forwards an opaque mesh packet (protobuf-encoded
+// RelayPacket, as sent by transport.RelayTransport) from one registered
+// relay-mode node to another, routed purely by node ID.
+func (s *RelayServer) handleRelayData(client *Client, rawMsg []byte) {
+	var msg struct {
+		Type    string `json:"type"`
+		Target  string `json:"target"`
+		Payload []byte `json:"payload"`
+	}
+	if err := json.Unmarshal(rawMsg, &msg); err != nil {
+		return
+	}
+
+	client.mu.Lock()
+	source := client.ID
+	client.mu.Unlock()
+	if source == "" {
+		return
+	}
+
+	client.LastSeen = time.Now()
+
+	s.clientsMu.RLock()
+	var target *websocket.Conn
+	for _, c := range s.clients {
+		c.mu.Lock()
+		if c.ID == msg.Target {
+			target = c.Conn
+		}
+		c.mu.Unlock()
+		if target != nil {
+			break
+		}
+	}
+	s.clientsMu.RUnlock()
+
+	if target == nil {
+		return
+	}
+
+	out := map[string]interface{}{
+		"type":    "relay-data",
+		"source":  source,
+		"payload": msg.Payload,
+	}
+	data, _ := json.Marshal(out)
+	target.WriteMessage(websocket.TextMessage, data)
 }
 
 func (s *RelayServer) sendPeerList(client *Client) {

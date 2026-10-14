@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/relaymesh/relaymesh/internal/ai"
 	"github.com/relaymesh/relaymesh/internal/config"
 	"github.com/relaymesh/relaymesh/internal/discovery"
@@ -20,6 +21,7 @@ import (
 	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
 	"github.com/relaymesh/relaymesh/internal/proxy"
+	"github.com/relaymesh/relaymesh/internal/stun"
 	"github.com/relaymesh/relaymesh/internal/telemetry"
 	"github.com/relaymesh/relaymesh/web"
 )
@@ -45,6 +47,9 @@ func main() {
 	encrypt := flag.Bool("encrypt", false, "Require authenticated encryption on the data plane (requires --identity)")
 	proxyAddr := flag.String("proxy", "", "Local SOCKS5/HTTP proxy address (e.g., 127.0.0.1:1080) to ride the mesh via a gateway")
 	gatewayID := flag.String("gateway", "", "Gateway node ID to route proxied traffic through (required with --proxy)")
+	signalURL := flag.String("signal", "", "Signaling server URL (e.g., https://relaymesh-f93s.onrender.com) for cross-internet hole punching; falls back to WSS relay if punching fails")
+	stunServer := flag.String("stun", "stun.l.google.com:19302", "STUN server for public-address discovery (used with --signal)")
+	relayURL := flag.String("relay", "", "Relay-server WSS URL for data-plane fallback when hole punching fails (default: derived from --signal)")
 	flag.Parse()
 
 	if *generateConfig {
@@ -170,6 +175,21 @@ func main() {
 	if err := meshNode.Start(ctx); err != nil {
 		logger.Error("failed to start mesh node", "error", err)
 		os.Exit(1)
+	}
+
+	// Phase 14: cross-internet connectivity.
+	// 1. STUN discovers our server-reflexive (public) UDP address.
+	// 2. The signaling server (/relay-ws) exchanges those addresses
+	//    between registered nodes.
+	// 3. Nodes race UDP hole punches on the exchanged addresses.
+	// 4. If punching fails (symmetric NAT/CGNAT), traffic falls back to
+	//    the relay-data path over the same WSS connection.
+	if *signalURL != "" {
+		relayWSS := *relayURL
+		if relayWSS == "" {
+			relayWSS = deriveRelayWSS(*signalURL)
+		}
+		go runSignaling(ctx, logger, meshNode, nodeConfig.ID, *signalURL, relayWSS, *stunServer, dPort)
 	}
 
 	// Client-side SOCKS5/HTTP proxy: local apps dial it, traffic is
@@ -385,4 +405,129 @@ func parsePortList(s string) ([]uint16, error) {
 		return nil, fmt.Errorf("no ports specified")
 	}
 	return ports, nil
+}
+
+// deriveRelayWSS turns a signaling base URL (e.g.
+// "https://relaymesh-f93s.onrender.com") into the WSS URL of its
+// /relay-ws endpoint.
+func deriveRelayWSS(base string) string {
+	base = strings.TrimSuffix(base, "/")
+	switch {
+	case strings.HasPrefix(base, "https://"):
+		return "wss://" + strings.TrimPrefix(base, "https://") + "/relay-ws"
+	case strings.HasPrefix(base, "http://"):
+		return "ws://" + strings.TrimPrefix(base, "http://") + "/relay-ws"
+	case strings.HasPrefix(base, "wss://") || strings.HasPrefix(base, "ws://"):
+		return base + "/relay-ws"
+	default:
+		return "wss://" + base + "/relay-ws"
+	}
+}
+
+// runSignaling drives Phase 14's cross-internet path:
+//   - STUN discovers our server-reflexive (public) data-port.
+//   - We register with the signaling server and exchange candidates
+//     with other registered nodes.
+//   - We keep refreshing our candidate so the server does not evict us.
+//
+// The mesh data plane itself keeps using UDPTransport; signaling only
+// injects candidate addresses into discovery via discovery.AddCandidate
+// (which MeshNode.sync polls). If punching fails, relay-data fallback
+// is available via the relayWSS endpoint.
+func runSignaling(ctx context.Context, logger *slog.Logger, meshNode *mesh.MeshNode, selfID node.NodeID, signalURL, relayWSS, stunServer string, dataPort uint16) {
+	logger.Info("signaling starting", "signal", signalURL, "relay_wss", relayWSS, "stun", stunServer)
+
+	addr, err := stun.PublicAddr(stunServer, "", 5*time.Second)
+	if err != nil {
+		logger.Warn("STUN discovery failed, proceeding without srflx candidate", "error", err)
+	}
+
+	// Candidate we advertise: our public (server-reflexive) data port,
+	// which is what remote peers must UDP-hole-punch to.
+	type candidate struct {
+		IP       string `json:"ip"`
+		Port     uint16 `json:"port"`
+		DataPort uint16 `json:"data_port,omitempty"`
+	}
+	var cands []candidate
+	if err == nil && addr.Port != 0 {
+		cands = append(cands, candidate{
+			IP:       addr.IP.String(),
+			Port:     addr.Port,
+			DataPort: dataPort,
+		})
+	}
+
+	wsURL := relayWSS
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		logger.Warn("signaling WS dial failed, cross-internet disabled", "url", wsURL, "error", err)
+		return
+	}
+	defer conn.Close()
+
+	register := map[string]interface{}{
+		"type":       "register",
+		"node_id":    string(selfID),
+		"candidates": cands,
+	}
+	if err := conn.WriteJSON(register); err != nil {
+		logger.Warn("signaling register failed", "error", err)
+		return
+	}
+	logger.Info("signaling registered", "url", wsURL, "candidates", len(cands))
+
+	// Read loop: server pushes {"type":"signal","payload":{"peers":{...}}}
+	// mapping other node IDs to their candidates.
+	go func() {
+		for {
+			var msg struct {
+				Type    string `json:"type"`
+				Payload struct {
+					Peers map[string][]candidate `json:"peers"`
+				} `json:"payload"`
+			}
+			if err := conn.ReadJSON(&msg); err != nil {
+				logger.Warn("signaling read error", "error", err)
+				return
+			}
+			if msg.Type != "signal" {
+				continue
+			}
+			for peerID, pcands := range msg.Payload.Peers {
+				if len(pcands) == 0 {
+					continue
+				}
+				// Inject the first candidate (most setups have one).
+				c := pcands[0]
+				dport := c.DataPort
+				if dport == 0 {
+					dport = c.Port
+				}
+				meshNode.Discovery().AddCandidate(node.NodeID(peerID), c.IP, c.Port, dport)
+				logger.Info("added remote candidate via signaling",
+					"peer", peerID, "ip", c.IP, "port", c.Port, "data_port", dport)
+			}
+		}
+	}()
+
+	// Refresh loop keeps our candidate fresh on the server.
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refresh := map[string]interface{}{
+				"type":       "signal",
+				"node_id":    string(selfID),
+				"candidates": cands,
+			}
+			if err := conn.WriteJSON(refresh); err != nil {
+				logger.Warn("signaling refresh failed", "error", err)
+				return
+			}
+		}
+	}
 }
