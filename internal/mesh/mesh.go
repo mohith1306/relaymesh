@@ -75,6 +75,10 @@ type MeshNode struct {
 
 	// extraCB receives non-probe deliveries alongside the channel.
 	extraCB func(forwarding.DeliveredPacket)
+	// payloadHandlers intercept application payloads before they
+	// reach the delivered channel; a handler returning true consumes
+	// the packet (used by the flow tunnel).
+	payloadHandlers []func(source node.NodeID, payload []byte) bool
 	// advisor optionally overrides next-hop selection.
 	advisor RouteAdvisor
 
@@ -199,6 +203,15 @@ func (m *MeshNode) OnDelivered(cb func(forwarding.DeliveredPacket)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.extraCB = cb
+}
+
+// AddPayloadHandler registers a payload interceptor. Handlers run (in
+// registration order) for non-probe packets before the delivered
+// channel; a handler returning true consumes the packet.
+func (m *MeshNode) AddPayloadHandler(h func(source node.NodeID, payload []byte) bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.payloadHandlers = append(m.payloadHandlers, h)
 }
 
 // SetAdvisor installs an optional next-hop advisor. A nil advisor

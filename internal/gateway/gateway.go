@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/relaymesh/relaymesh/api/proto"
+	"github.com/relaymesh/relaymesh/internal/flow"
 	"github.com/relaymesh/relaymesh/internal/forwarding"
 	"github.com/relaymesh/relaymesh/internal/mesh"
 	"github.com/relaymesh/relaymesh/internal/node"
@@ -29,16 +30,22 @@ const (
 //
 //	Mesh node A -> relay B -> Gateway -> Internet target
 //	Internet target -> Gateway -> relay B -> Mesh node A
+//
+// It also terminates the flow tunnel: continuous TCP/UDP sessions
+// from mesh nodes, dialed out as real internet connections.
 type Gateway struct {
 	mesh   *mesh.MeshNode
 	nat    *NATTable
+	flows  *flow.GatewayHandler
 	logger *slog.Logger
 }
 
 func New(cfg mesh.Config, logger *slog.Logger) *Gateway {
+	m := mesh.New(cfg, logger)
 	return &Gateway{
-		mesh:   mesh.New(cfg, logger),
+		mesh:   m,
 		nat:    NewNATTable(),
+		flows:  flow.NewGatewayHandler(cfg.NodeID, m.Send, logger.With("component", "flow-gateway")),
 		logger: logger,
 	}
 }
@@ -47,6 +54,7 @@ func (g *Gateway) Start(ctx context.Context) error {
 	if err := g.mesh.Start(ctx); err != nil {
 		return err
 	}
+	g.mesh.AddPayloadHandler(g.flows.HandlePacket)
 	g.mesh.OnDelivered(func(p forwarding.DeliveredPacket) {
 		req, ok := parseEgressRequest(p.Payload)
 		if !ok {
@@ -65,6 +73,9 @@ func (g *Gateway) Mesh() *mesh.MeshNode { return g.mesh }
 
 // NAT exposes the flow table for observability and tests.
 func (g *Gateway) NAT() *NATTable { return g.nat }
+
+// Flows exposes the flow-tunnel handler for observability and tests.
+func (g *Gateway) Flows() *flow.GatewayHandler { return g.flows }
 
 func parseEgressRequest(payload []byte) (*pb.EgressRequest, bool) {
 	var req pb.EgressRequest

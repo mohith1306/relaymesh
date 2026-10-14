@@ -55,15 +55,6 @@ const relayIndexHTML = `<!DOCTYPE html>
         .badge.relay { background: #f59e0b; color: #0f172a; }
         .empty { color: #64748b; text-align: center; padding: 1rem; font-size: 0.8125rem; }
         canvas { width: 100%; height: 200px; background: #0f172a; border-radius: 0.375rem; border: 1px solid #334155; }
-        .chat { max-height: 300px; overflow-y: auto; margin-bottom: 0.5rem; }
-        .chat-msg { padding: 0.5rem; margin-bottom: 0.25rem; border-radius: 0.25rem; font-size: 0.8125rem; }
-        .chat-msg.me { background: #1e3a5f; margin-left: 2rem; }
-        .chat-msg.other { background: #0f172a; margin-right: 2rem; }
-        .chat-msg .sender { color: #38bdf8; font-size: 0.6875rem; margin-bottom: 0.125rem; }
-        .chat-msg .time { color: #64748b; font-size: 0.625rem; }
-        .chat-msg .route { color: #f59e0b; font-size: 0.625rem; margin-top: 0.125rem; }
-        .chat-input { display: flex; gap: 0.5rem; }
-        .chat-input input { flex: 1; }
         .hidden { display: none; }
         .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
         .stat { background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; text-align: center; }
@@ -102,7 +93,6 @@ const relayIndexHTML = `<!DOCTYPE html>
     <div id="meshView" class="hidden">
         <div class="tabs">
             <div class="tab active" onclick="showTab('topology')">Topology</div>
-            <div class="tab" onclick="showTab('chat')">Messages</div>
             <div class="tab" onclick="showTab('devices')">Devices</div>
             <div class="tab" onclick="showTab('routing')">Routing</div>
         </div>
@@ -112,24 +102,6 @@ const relayIndexHTML = `<!DOCTYPE html>
                 <div class="card">
                     <h2>Mesh Topology</h2>
                     <canvas id="topoCanvas"></canvas>
-                </div>
-            </div>
-
-            <div id="tab-chat" class="hidden">
-                <div class="card">
-                    <h2>Messages <span id="msgMode" style="float:right;font-size:0.625rem;color:#f59e0b;">BROADCAST</span></h2>
-                    <div class="chat" id="chatMessages">
-                        <div class="empty">No messages yet</div>
-                    </div>
-                    <div class="form-group">
-                        <select id="msgTarget" onchange="updateMsgMode()">
-                            <option value="all">Broadcast to All</option>
-                        </select>
-                    </div>
-                    <div class="chat-input">
-                        <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()" />
-                        <button class="btn btn-send" onclick="sendChat()">Send</button>
-                    </div>
                 </div>
             </div>
 
@@ -161,8 +133,6 @@ const relayIndexHTML = `<!DOCTYPE html>
                     <h2>Network Stats</h2>
                     <div class="stats">
                         <div class="stat"><div class="stat-val" id="statPeers">0</div><div class="stat-label">Nodes</div></div>
-                        <div class="stat"><div class="stat-val" id="statMsgs">0</div><div class="stat-label">Messages</div></div>
-                        <div class="stat"><div class="stat-val" id="statRelayed">0</div><div class="stat-label">Relayed</div></div>
                         <div class="stat"><div class="stat-val" id="statUptime">0s</div><div class="stat-label">Uptime</div></div>
                     </div>
                 </div>
@@ -171,8 +141,8 @@ const relayIndexHTML = `<!DOCTYPE html>
     </div>
 
     <script>
-        var ws = null, nodeId = null, deviceName = '', peers = [], messages = [], startTime = null, selectedTarget = 'all';
-        var canvas, ctx, relayCount = 0;
+        var ws = null, nodeId = null, deviceName = '', peers = [], startTime = null;
+        var canvas, ctx;
 
         function generateId() { return 'web-' + Math.random().toString(36).substr(2, 9); }
 
@@ -218,10 +188,6 @@ const relayIndexHTML = `<!DOCTYPE html>
                         peers = msg.payload || [];
                         renderPeers();
                         drawTopology();
-                        updateTargetSelect();
-                        break;
-                    case 'mesh_msg':
-                        handleMeshMessage(msg);
                         break;
                     case 'heartbeat':
                         ws.send(JSON.stringify({ type: 'heartbeat' }));
@@ -245,93 +211,9 @@ const relayIndexHTML = `<!DOCTYPE html>
             list.innerHTML = peers.map(function(p) {
                 var badges = '<span class="badge web">WEB</span>';
                 if (p.hops > 1) badges += '<span class="badge relay">' + p.hops + ' HOPS</span>';
-                return '<div class="peer-item" onclick="selectPeer(\'' + p.id + '\')"><span>' + p.device_name + '</span><div>' + badges + '</div></div>';
+                return '<div class="peer-item"><span>' + p.device_name + '</span><div>' + badges + '</div></div>';
             }).join('');
             renderRoutingTable();
-        }
-
-        function selectPeer(id) {
-            selectedTarget = id;
-            document.getElementById('msgTarget').value = id;
-            updateMsgMode();
-            showTab('chat');
-            document.querySelectorAll('.tab')[1].click();
-        }
-
-        function updateTargetSelect() {
-            var sel = document.getElementById('msgTarget');
-            sel.innerHTML = '<option value="all">Broadcast to All</option>';
-            peers.forEach(function(p) {
-                sel.innerHTML += '<option value="' + p.id + '">' + p.device_name + '</option>';
-            });
-            sel.value = selectedTarget;
-        }
-
-        function updateMsgMode() {
-            selectedTarget = document.getElementById('msgTarget').value;
-            document.getElementById('msgMode').textContent = selectedTarget === 'all' ? 'BROADCAST' : 'DIRECT → ' + getPeerName(selectedTarget);
-        }
-
-        function getPeerName(id) {
-            var p = peers.find(function(p) { return p.id === id; });
-            return p ? p.device_name : id;
-        }
-
-        function sendChat() {
-            var input = document.getElementById('chatInput');
-            var text = input.value.trim();
-            if (!text || !ws) return;
-
-            var msg = {
-                type: 'mesh_msg',
-                payload: {
-                    from: nodeId,
-                    from_name: deviceName,
-                    to: selectedTarget,
-                    text: text,
-                    hops: 0,
-                    path: [nodeId]
-                }
-            };
-
-            ws.send(JSON.stringify(msg));
-            messages.push({ payload: msg.payload, timestamp: new Date().toISOString(), local: true });
-            renderChat();
-            input.value = '';
-        }
-
-        function handleMeshMessage(msg) {
-            var p = msg.payload;
-
-            if (p.from === nodeId) return;
-
-            if (p.to === 'all' || p.to === nodeId) {
-                messages.push({ payload: p, timestamp: msg.timestamp || new Date().toISOString() });
-                renderChat();
-            }
-
-            if (p.to !== 'all' && p.to !== nodeId && !p.path.includes(nodeId)) {
-                relayCount++;
-                document.getElementById('statRelayed').textContent = relayCount;
-                p.hops++;
-                p.path.push(nodeId);
-                ws.send(JSON.stringify({ type: 'mesh_msg', payload: p }));
-            }
-        }
-
-        function renderChat() {
-            var el = document.getElementById('chatMessages');
-            if (!messages.length) { el.innerHTML = '<div class="empty">No messages yet</div>'; return; }
-            el.innerHTML = messages.map(function(m) {
-                var p = m.payload;
-                var isMe = p.from === nodeId;
-                var time = new Date(m.timestamp).toLocaleTimeString();
-                var route = p.hops > 0 ? '<div class="route">Relayed through ' + p.hops + ' hop(s): ' + p.path.join(' → ') + '</div>' : '<div class="route">Direct connection</div>';
-                var target = p.to === 'all' ? ' (Broadcast)' : ' → ' + getPeerName(p.to);
-                return '<div class="chat-msg ' + (isMe ? 'me' : 'other') + '"><div class="sender">' + p.from_name + target + '</div><div>' + p.text + '</div>' + route + '<div class="time">' + time + '</div></div>';
-            }).join('');
-            el.scrollTop = el.scrollHeight;
-            document.getElementById('statMsgs').textContent = messages.length;
         }
 
         function renderRoutingTable() {
@@ -408,9 +290,9 @@ type Message struct {
 }
 
 type RelayServer struct {
-	clients    map[*websocket.Conn]*Client
-	clientsMu  sync.RWMutex
-	broadcast  chan []byte
+	clients   map[*websocket.Conn]*Client
+	clientsMu sync.RWMutex
+	broadcast chan []byte
 }
 
 var upgrader = websocket.Upgrader{
@@ -500,8 +382,6 @@ func (s *RelayServer) handleMessage(client *Client, rawMsg []byte) {
 		s.handleRegister(client, msg)
 	case "heartbeat":
 		client.LastSeen = time.Now()
-	case "mesh_msg":
-		s.handleMeshMsg(client, rawMsg)
 	case "get_peers":
 		s.sendPeerList(client)
 	}
@@ -522,60 +402,6 @@ func (s *RelayServer) handleRegister(client *Client, msg Message) {
 
 	s.sendPeerList(client)
 	s.broadcastPeerList()
-}
-
-func (s *RelayServer) handleMeshMsg(client *Client, rawMsg []byte) {
-	var msg Message
-	json.Unmarshal(rawMsg, &msg)
-
-	var payload struct {
-		To       string   `json:"to"`
-		From     string   `json:"from"`
-		Text     string   `json:"text"`
-		Hops     int      `json:"hops"`
-		Path     []string `json:"path"`
-	}
-	json.Unmarshal(msg.Payload, &payload)
-
-	s.clientsMu.RLock()
-	defer s.clientsMu.RUnlock()
-
-	if payload.To == "all" {
-		for _, c := range s.clients {
-			if c.ID != payload.From {
-				c.Conn.WriteMessage(websocket.TextMessage, rawMsg)
-			}
-		}
-		log.Printf("Broadcast from %s: %s", client.DeviceName, payload.Text)
-	} else {
-		for _, c := range s.clients {
-			if c.ID == payload.To && !contains(payload.Path, c.ID) {
-				c.Conn.WriteMessage(websocket.TextMessage, rawMsg)
-				log.Printf("Direct message from %s to %s", client.DeviceName, c.DeviceName)
-				return
-			}
-		}
-		for _, c := range s.clients {
-			if c.ID != payload.From && !contains(payload.Path, c.ID) {
-				payload.Hops++
-				payload.Path = append(payload.Path, client.ID)
-				msg.Payload, _ = json.Marshal(payload)
-				newMsg, _ := json.Marshal(msg)
-				c.Conn.WriteMessage(websocket.TextMessage, newMsg)
-				log.Printf("Relaying message from %s to %s via %s", client.DeviceName, payload.To, c.DeviceName)
-				return
-			}
-		}
-	}
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *RelayServer) sendPeerList(client *Client) {

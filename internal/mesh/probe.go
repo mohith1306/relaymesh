@@ -233,14 +233,20 @@ func (m *MeshNode) classify(p forwarding.DeliveredPacket) {
 		}
 		return
 	}
+	m.mu.Lock()
+	handlers := m.payloadHandlers
+	cb := m.extraCB
+	m.mu.Unlock()
+	for _, h := range handlers {
+		if h(p.Source, p.Payload) {
+			return
+		}
+	}
 	select {
 	case m.delivered <- p:
 	default:
 		m.logger.Warn("delivered channel full, dropping notification", "packet_id", p.ID)
 	}
-	m.mu.Lock()
-	cb := m.extraCB
-	m.mu.Unlock()
 	if cb != nil {
 		cb(p)
 	}
